@@ -1,0 +1,26 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: turni-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: turnidb
+      POSTGRES_USER: turniapp
+      POSTGRES_PASSWORD: turniapp
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # Stub FastAPI — vedi ../turny-scheduler (brain §2d). Imposta SCHEDULER_SERVICE_URL=http://localhost:8000 nel .env di turni-app.
+  scheduler:
+    build:
+      context: ../turny-scheduler
+      dockerfile: Dockerfile
+    container_name: turny-scheduler
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+
+volumes:
+  postgres_data:

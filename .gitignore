@@ -1,0 +1,21 @@
+# Monorepo root — non committare segreti né artifact locali
+.DS_Store
+Thumbs.db
+
+.env
+.env.*
+!.env.example
+
+# Python scheduler
+turny-scheduler/__pycache__/
+turny-scheduler/*.py[cod]
+turny-scheduler/.venv/
+turny-scheduler/venv/
+turny-scheduler/.pytest_cache/
+turny-scheduler/.mypy_cache/
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*~

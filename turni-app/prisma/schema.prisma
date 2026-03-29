@@ -1,0 +1,362 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Organization {
+  id                   String   @id @default(cuid())
+  name                 String
+  slug                 String   @unique
+  plan                 Plan     @default(FREE)
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  calendars Calendar[]
+  members   OrgMember[]
+}
+
+enum Plan {
+  FREE
+  STARTER
+  PRO
+  ENTERPRISE
+}
+
+model User {
+  id                  String   @id @default(cuid())
+  email               String   @unique
+  name                String?
+  firstName           String   @default("")
+  lastName            String   @default("")
+  professionalRole    String   @default("")
+  passwordHash        String?
+  emailVerified       DateTime?
+  image               String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  orgMemberships      OrgMember[]
+  calendarMemberships CalendarMember[]
+  sessions            Session[]
+  accounts            Account[]
+  passwordResetTokens PasswordResetToken[]
+}
+
+/// Token monouso per link reimposta password (scadenza breve).
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model OrgMember {
+  id        String   @id @default(cuid())
+  userId    String
+  orgId     String
+  role      OrgRole  @default(WORKER)
+  roles     OrgRole[] @default([WORKER])
+  /// Colore riga persona (#RRGGBB) usato nelle griglie turno se useDisplayColorInCalendars=true e non c'è override sul calendario.
+  defaultDisplayColor        String?
+  useDisplayColorInCalendars Boolean @default(true)
+  createdAt DateTime @default(now())
+
+  user User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, orgId])
+}
+
+enum OrgRole {
+  OWNER
+  ADMIN
+  MANAGER
+  WORKER
+}
+
+enum ContractMode {
+  SHIFTS
+  HOURS
+}
+
+model Calendar {
+  id                  String       @id @default(cuid())
+  orgId               String
+  name                String
+  description         String?
+  color               String       @default("#3B8BD4")
+  timezone            String       @default("Europe/Rome")
+  isActive            Boolean      @default(true)
+  isPublicWithinOrg   Boolean      @default(true)
+  defaultContractMode ContractMode @default(SHIFTS)
+  activeWeekdays      Int[]        @default([1, 2, 3, 4, 5])
+  /// Regole scheduler livello calendario (es. rest_after_night, max_nights_per_month) — vedi brain §2c
+  rules               Json?
+  /// Regole in linguaggio naturale (array di stringhe) da tradurre in vincoli (Gemini / OR-Tools)
+  customRules         Json?
+  aiConfig            Json?
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  org        Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  shiftTypes ShiftType[]
+  members    CalendarMember[]
+  schedules  Schedule[]
+}
+
+model ShiftType {
+  id               String   @id @default(cuid())
+  calendarId       String
+  name             String
+  startTime        String
+  endTime          String
+  durationHours    Float
+  color            String   @default("#E1F5EE")
+  minStaff         Int      @default(1)
+  maxStaff         Int?
+  order            Int      @default(0)
+  isActive         Boolean  @default(true)
+  isOnCall         Boolean  @default(false)
+  activeWeekdays   Int[]    @default([1, 2, 3, 4, 5])
+  roleRequirements Json?
+  /// Regole specifiche del tipo turno — vedi brain §2c
+  rules            Json?
+  createdAt        DateTime @default(now())
+
+  calendar    Calendar          @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+  assignments ShiftAssignment[]
+}
+
+model CalendarMember {
+  id                       String       @id @default(cuid())
+  calendarId               String
+  userId                   String
+  roleInCalendar           String?
+  contractMode             ContractMode @default(SHIFTS)
+  contractHoursWeek        Float?
+  contractHoursMonth       Float?
+  contractShiftsMonth      Int?
+  contractShiftsWeek       Int?
+  maxHoursWeekLegal        Float        @default(48)
+  minRestHoursBetweenShifts Float       @default(11)
+  maxConsecutiveDays       Int          @default(6)
+  isActive                 Boolean      @default(true)
+  isJolly                  Boolean      @default(false)
+  joinedAt                 DateTime     @default(now())
+
+  calendar    Calendar          @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  constraints Constraint[]
+  monthlyConstraints MonthlyConstraint[]
+  assignments ShiftAssignment[]
+
+  @@unique([calendarId, userId])
+}
+
+model Constraint {
+  id        String           @id @default(cuid())
+  memberId  String
+  type      ConstraintType
+  weight    ConstraintWeight @default(SOFT)
+  value     Json
+  validFrom DateTime?
+  validTo   DateTime?
+  note      String?
+  createdBy String?
+  createdAt DateTime         @default(now())
+
+  member CalendarMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+}
+
+enum ConstraintType {
+  UNAVAILABLE_DATE
+  UNAVAILABLE_DATES
+  UNAVAILABLE_DATERANGE
+  UNAVAILABLE_WEEKDAY
+  UNAVAILABLE_SHIFT
+  /** Periodo: persona deve essere assegnata quel giorno (≥1 turno). */
+  REQUIRED_DATE
+  /** Periodo: persona deve essere assegnata a quel tipo turno in quella data. */
+  REQUIRED_SHIFT
+  PREFER_SHIFT
+  MAX_HOURS_WEEK
+  MAX_HOURS_MONTH
+  MAX_SHIFTS_MONTH
+  MAX_SHIFTS_WEEK
+  MAX_CONSECUTIVE_DAYS
+  MIN_REST_HOURS
+  NO_WEEKEND
+  PREFER_NO_WEEKEND
+  FIXED_DAYS
+  ONLY_MORNING
+  ONLY_AFTERNOON
+  CUSTOM
+}
+
+enum ConstraintWeight {
+  HARD
+  SOFT
+}
+
+model Schedule {
+  id            String         @id @default(cuid())
+  calendarId    String
+  year          Int
+  month         Int
+  status        ScheduleStatus @default(DRAFT)
+  publishedAt   DateTime?
+  publishedBy   String?
+  generationLog Json?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  calendar    Calendar          @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+  monthlyConstraints MonthlyConstraint[]
+  assignments ShiftAssignment[]
+
+  @@unique([calendarId, year, month])
+}
+
+model MonthlyConstraint {
+  id         String           @id @default(cuid())
+  scheduleId String
+  memberId   String
+  type       ConstraintType
+  weight     ConstraintWeight @default(SOFT)
+  value      Json
+  note       String?
+  createdAt  DateTime         @default(now())
+
+  schedule   Schedule       @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  member     CalendarMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@index([scheduleId])
+  @@index([memberId])
+}
+
+enum ScheduleStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+model ShiftAssignment {
+  id              String           @id @default(cuid())
+  scheduleId      String
+  shiftTypeId     String
+  memberId        String
+  date            DateTime
+  status          AssignmentStatus @default(CONFIRMED)
+  note            String?
+  isAutoGenerated Boolean          @default(false)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  schedule     Schedule        @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  shiftType    ShiftType       @relation(fields: [shiftTypeId], references: [id])
+  member       CalendarMember  @relation(fields: [memberId], references: [id])
+  swapRequests SwapRequest[]   @relation("OriginalAssignment")
+
+  @@unique([scheduleId, shiftTypeId, memberId, date])
+}
+
+enum AssignmentStatus {
+  CONFIRMED
+  SWAP_PENDING
+  CANCELLED
+}
+
+model SwapRequest {
+  id                   String     @id @default(cuid())
+  originalAssignmentId String
+  requestedById        String
+  targetMemberId       String?
+  status               SwapStatus @default(PENDING)
+  note                 String?
+  managerApprovedAt    DateTime?
+  managerApprovedBy    String?
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+
+  originalAssignment ShiftAssignment @relation("OriginalAssignment", fields: [originalAssignmentId], references: [id])
+}
+
+enum SwapStatus {
+  PENDING
+  ACCEPTED_BY_TARGET
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType
+  title     String
+  body      String
+  isRead    Boolean          @default(false)
+  link      String?
+  createdAt DateTime         @default(now())
+}
+
+enum NotificationType {
+  SCHEDULE_PUBLISHED
+  SCHEDULE_UPDATED
+  SWAP_REQUEST_RECEIVED
+  SWAP_REQUEST_ACCEPTED
+  SWAP_REQUEST_APPROVED
+  SWAP_REQUEST_REJECTED
+  CONSTRAINT_REMINDER
+  SYSTEM
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}

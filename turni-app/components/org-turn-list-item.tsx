@@ -1,0 +1,223 @@
+"use client";
+
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { ConfirmModal } from "@/components/confirm-modal";
+
+type Props = {
+  orgSlug: string;
+  schedule: {
+    id: string;
+    calendarId: string;
+    calendarName: string;
+    year: number;
+    month: number;
+    status: "DRAFT" | "PUBLISHED" | "ARCHIVED";
+    generationLog: unknown;
+  };
+  canEdit: boolean;
+};
+
+function monthName(month: number) {
+  return new Intl.DateTimeFormat("it-IT", { month: "long" }).format(new Date(2026, month - 1, 1));
+}
+
+const MONTH_OPTIONS = Array.from({ length: 12 }, (_, idx) => {
+  const value = idx + 1;
+  return { value, label: monthName(value) };
+});
+
+function periodFromLog(schedule: Props["schedule"]) {
+  const meta = (schedule.generationLog ?? {}) as { periodType?: string; startDate?: string; endDate?: string };
+  if (meta.periodType === "WEEKLY" || meta.periodType === "CUSTOM") {
+    return {
+      type: meta.periodType,
+      startDate: meta.startDate ?? "",
+      endDate: meta.endDate ?? "",
+    };
+  }
+  return { type: "MONTHLY", year: schedule.year, month: schedule.month };
+}
+
+function periodLabel(schedule: Props["schedule"]) {
+  const p = periodFromLog(schedule);
+  if (p.type === "MONTHLY") return `${monthName(schedule.month)} ${schedule.year}`;
+  return `${p.type === "WEEKLY" ? "Settimanale" : "Custom"} - dal ${p.startDate} al ${p.endDate}`;
+}
+
+function statusLabel(status: Props["schedule"]["status"]) {
+  if (status === "DRAFT") return "Bozza";
+  if (status === "PUBLISHED") return "Pubblicato";
+  return "Archiviato";
+}
+
+export function OrgTurnListItem({ orgSlug, schedule, canEdit }: Props) {
+  const router = useRouter();
+  const [editing, setEditing] = useState(false);
+  const initial = periodFromLog(schedule);
+  const [periodType, setPeriodType] = useState<"MONTHLY" | "WEEKLY" | "CUSTOM">(initial.type as "MONTHLY" | "WEEKLY" | "CUSTOM");
+  const [year, setYear] = useState(schedule.year);
+  const [month, setMonth] = useState(schedule.month);
+  const [startDate, setStartDate] = useState("startDate" in initial ? (initial.startDate ?? "") : "");
+  const [endDate, setEndDate] = useState("endDate" in initial ? (initial.endDate ?? "") : "");
+  const [status, setStatus] = useState<"DRAFT" | "PUBLISHED">(schedule.status === "PUBLISHED" ? "PUBLISHED" : "DRAFT");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  async function save() {
+    try {
+      setSaving(true);
+      setSaveError(null);
+      const endResolved =
+        periodType === "WEEKLY" && startDate ? addDays(startDate, 6) : endDate;
+      const requestBody: Record<string, unknown> = {
+        status,
+        periodType,
+      };
+      if (periodType === "MONTHLY") {
+        requestBody.year = Number(year);
+        requestBody.month = Number(month);
+      } else {
+        if (startDate) requestBody.startDate = startDate;
+        if (endResolved) requestBody.endDate = endResolved;
+      }
+
+      const response = await fetch(`/api/schedules/${schedule.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestBody),
+      });
+      const result = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        setSaveError(result.error ?? "Salvataggio non riuscito");
+        return;
+      }
+      setEditing(false);
+      router.refresh();
+    } catch {
+      setSaveError("Errore di rete durante il salvataggio");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function remove() {
+    setDeleting(true);
+    const response = await fetch(`/api/schedules/${schedule.id}`, { method: "DELETE" });
+    setDeleting(false);
+    setDeleteOpen(false);
+    if (response.ok) router.refresh();
+  }
+
+  function addDays(dateIso: string, days: number) {
+    const d = new Date(`${dateIso}T00:00:00.000Z`);
+    d.setUTCDate(d.getUTCDate() + days);
+    return d.toISOString().slice(0, 10);
+  }
+
+  return (
+    <li className="border rounded p-3">
+      <div className="d-flex justify-content-between align-items-center gap-2 flex-wrap">
+        <div>
+          <p className="fw-semibold mb-0">{periodLabel(schedule)}</p>
+          <p className="small text-secondary mb-0">Stato: {statusLabel(schedule.status)}</p>
+        </div>
+        <div className="d-flex gap-2">
+          <Link className="btn btn-sm btn-success" href={`/${orgSlug}/${schedule.calendarId}/schedules/${schedule.id}/grid`}>
+            Configuratore
+          </Link>
+          {canEdit ? (
+            <>
+              <button className="btn btn-sm btn-outline-success" onClick={() => setEditing(true)}>
+                Modifica
+              </button>
+              <button className="btn btn-sm btn-outline-danger" onClick={() => setDeleteOpen(true)}>
+                Elimina
+              </button>
+            </>
+          ) : null}
+        </div>
+      </div>
+      {editing ? (
+        <>
+          <div className="modal fade show d-block" tabIndex={-1} role="dialog" aria-modal="true">
+            <div className="modal-dialog modal-dialog-centered turny-modal-medium">
+              <div className="modal-content turny-modal">
+                <div className="modal-header">
+                  <h5 className="modal-title">Modifica turno</h5>
+                  <button type="button" className="btn-close" aria-label="Chiudi" onClick={() => setEditing(false)} />
+                </div>
+                <div className="modal-body pb-4">
+                  <div className="row g-2 align-items-end">
+                    <div className="col-md-4">
+                      <label className="form-label small mb-1">Periodo</label>
+                      <select className="form-select form-select-sm input-underlined" value={periodType} onChange={(e) => setPeriodType(e.target.value as "MONTHLY" | "WEEKLY" | "CUSTOM")} disabled={saving}>
+                        <option value="MONTHLY">Mensile</option>
+                        <option value="WEEKLY">Settimanale</option>
+                        <option value="CUSTOM">Custom</option>
+                      </select>
+                    </div>
+                    {periodType === "MONTHLY" ? (
+                      <>
+                        <div className="col-md-4">
+                          <label className="form-label small mb-1">Anno</label>
+                          <input type="number" className="form-control form-control-sm input-underlined" value={year} onChange={(e) => setYear(Number(e.target.value))} disabled={saving} />
+                        </div>
+                        <div className="col-md-4">
+                          <label className="form-label small mb-1">Mese</label>
+                          <select className="form-select form-select-sm input-underlined" value={month} onChange={(e) => setMonth(Number(e.target.value))} disabled={saving}>
+                            {MONTH_OPTIONS.map((m) => (
+                              <option key={m.value} value={m.value}>{m.label}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="col-md-4">
+                          <label className="form-label small mb-1">Data inizio</label>
+                          <input type="date" className="form-control form-control-sm input-underlined" value={startDate} onChange={(e) => setStartDate(e.target.value)} disabled={saving} />
+                        </div>
+                        <div className="col-md-4">
+                          <label className="form-label small mb-1">Data fine</label>
+                          <input type="date" className="form-control form-control-sm input-underlined" value={periodType === "WEEKLY" && startDate ? addDays(startDate, 6) : endDate} onChange={(e) => setEndDate(e.target.value)} disabled={saving || periodType === "WEEKLY"} />
+                        </div>
+                      </>
+                    )}
+                    <div className="col-md-4">
+                      <label className="form-label small mb-1">Stato</label>
+                      <select className="form-select form-select-sm input-underlined" value={status} onChange={(e) => setStatus(e.target.value as "DRAFT" | "PUBLISHED")} disabled={saving}>
+                        <option value="DRAFT">Bozza</option>
+                        <option value="PUBLISHED">Pubblicato</option>
+                      </select>
+                    </div>
+                    <div className="col-12 d-flex justify-content-end gap-2">
+                      <button className="btn btn-sm btn-success" onClick={() => void save()} disabled={saving}>Salva</button>
+                      <button className="btn btn-sm btn-outline-success" onClick={() => setEditing(false)} disabled={saving}>Annulla</button>
+                    </div>
+                    {saveError ? <div className="col-12 small text-danger">{saveError}</div> : null}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div onClick={() => setEditing(false)} style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.06)", zIndex: 1040 }} />
+        </>
+      ) : null}
+      <ConfirmModal
+        open={deleteOpen}
+        title="Elimina turno"
+        message="Confermi l'eliminazione del turno?"
+        confirmLabel="Elimina"
+        confirmVariant="danger"
+        loading={deleting}
+        onCancel={() => setDeleteOpen(false)}
+        onConfirm={remove}
+      />
+    </li>
+  );
+}
+

@@ -1,0 +1,286 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-titillium);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: #ffffff;
+  color: var(--foreground);
+  font-family: var(--font-titillium), Arial, Helvetica, sans-serif;
+}
+
+.font-handwritten {
+  font-family: var(--font-sue-ellen), cursive;
+}
+
+:root {
+  --bs-primary: #1f7a3f;
+  --bs-primary-rgb: 31, 122, 63;
+  --bs-success: #1f7a3f;
+  --bs-link-color: #1f7a3f;
+  --bs-link-hover-color: #166130;
+}
+
+.sidebar-link {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.65rem;
+  border-radius: 0.5rem;
+  color: #1f7a3f;
+  text-decoration: none;
+  font-size: 1rem;
+}
+
+.sidebar-link:hover {
+  background: #edf7f0;
+  color: #166130;
+}
+
+.sidebar-link.active {
+  background: #dff1e5;
+  color: #145329;
+  font-weight: 600;
+}
+
+.input-underlined {
+  border: none;
+  border-bottom: 2px solid #c7d3cc;
+  border-radius: 0;
+  padding-left: 0;
+  padding-right: 0;
+  background-color: transparent;
+}
+
+:focus:not([data-focus-mouse="true"]) {
+  outline: none !important;
+  border-color: inherit !important;
+  box-shadow: none !important;
+}
+
+*:focus,
+*:focus-visible,
+input:focus,
+input:focus-visible,
+select:focus,
+select:focus-visible,
+textarea:focus,
+textarea:focus-visible,
+button:focus,
+button:focus-visible,
+.btn:focus,
+.btn:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.form-label {
+  font-weight: 700 !important;
+}
+
+.input-underlined-compact {
+  font-size: 0.84rem;
+  padding-top: 0.1rem;
+  padding-bottom: 0.1rem;
+  line-height: 1.1;
+}
+
+.color-swatch {
+  width: 24px;
+  height: 24px;
+  border: 1px solid #aab9b0;
+  border-radius: 999px;
+  padding: 0;
+}
+
+.color-swatch.active {
+  outline: 2px solid #1f7a3f;
+  outline-offset: 1px;
+}
+
+.color-picker-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid #c7d3cc;
+  border-radius: 0.5rem;
+  background: #fff;
+  padding: 0.35rem 0.55rem;
+}
+
+.color-picker-preview {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 1px solid #8ea196;
+}
+
+.color-picker-popover {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 0.35rem);
+  left: 0;
+  background: #fff;
+  border: 1px solid #c7d3cc;
+  border-radius: 0.65rem;
+  padding: 0.5rem;
+  min-width: 170px;
+}
+
+.weekdays-popover-dark {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  background: #ffffff;
+  border: 1px solid #c7d3cc;
+  border-radius: 0.5rem;
+  padding: 0.45rem;
+  min-width: 146px;
+  box-shadow: 0 8px 18px rgba(16, 24, 40, 0.1);
+}
+
+.weekday-mini-row {
+  display: flex;
+  gap: 0.3rem;
+  margin-bottom: 0.25rem;
+}
+
+.weekday-mini-row:last-child {
+  margin-bottom: 0;
+}
+
+.weekday-mini-square {
+  min-width: 40px;
+  height: 28px;
+  border: 1px solid #1f7a3f;
+  border-radius: 0.35rem;
+  background: #ffffff;
+  color: #1f7a3f;
+  font-size: 0.74rem;
+  font-weight: 600;
+  line-height: 1;
+  padding: 0 0.25rem;
+}
+
+.weekday-mini-square.active {
+  background: #1f7a3f;
+  border-color: #1f7a3f;
+  color: #ffffff;
+}
+
+.turny-modal-medium {
+  max-width: 760px;
+}
+
+.turny-modal-wide {
+  max-width: 1120px;
+  width: 96vw;
+}
+
+.turny-modal {
+  border: 1px solid #d8e6dd;
+  border-radius: 0.85rem;
+  box-shadow: 0 12px 34px rgba(16, 24, 40, 0.12);
+}
+
+/** Conferme sopra un altro modal (es. modifica membro): sfondo più scuro così il pannello sotto si attenua. */
+.turny-modal-backdrop-nested {
+  opacity: 0.55;
+}
+
+/**
+ * Pulsanti giorno/turno (scheda indisponibilità): niente alone blu Bootstrap.
+ * Rosso: sfondo rosso anche con focus (prima il bianco al focus nascondeva il colore finché non si cliccava altrove).
+ */
+.schedule-member-popup-tile.btn {
+  box-shadow: none !important;
+  box-sizing: border-box;
+}
+
+.schedule-member-popup-tile.btn-danger {
+  border: 2px solid #dc3545 !important;
+  background-color: #dc3545 !important;
+  color: #fff !important;
+}
+.schedule-member-popup-tile.btn-danger:focus,
+.schedule-member-popup-tile.btn-danger:focus-visible {
+  background-color: #dc3545 !important;
+  color: #fff !important;
+  border: 2px solid #dc3545 !important;
+  outline: 2px solid rgba(255, 255, 255, 0.85);
+  outline-offset: 2px;
+}
+
+.schedule-member-popup-tile.btn-outline-success {
+  border: 2px solid #198754 !important;
+  color: #146c43 !important;
+  background-color: #fff !important;
+}
+.schedule-member-popup-tile.btn-outline-success:focus-visible {
+  outline: 2px solid #198754;
+  outline-offset: 2px;
+}
+
+/** DEVE (verde pieno): stesso spessore bordo degli altri stati (2px) per evitare scatti orizzontali rispetto a outline/bypass. */
+.schedule-member-popup-tile.btn-success {
+  border: 2px solid #198754 !important;
+  background-color: #198754 !important;
+  color: #fff !important;
+}
+.schedule-member-popup-tile.btn-success:focus,
+.schedule-member-popup-tile.btn-success:focus-visible {
+  background-color: #198754 !important;
+  color: #fff !important;
+  border: 2px solid #198754 !important;
+  outline: 2px solid rgba(255, 255, 255, 0.85);
+  outline-offset: 2px;
+}
+
+/**
+ * Disponibile ma generico superato (Bootstrap .btn sovrascrive senza !important).
+ */
+.schedule-member-generic-bypass-btn.btn {
+  background-color: #ffffff !important;
+  border: 2px solid #dc3545 !important;
+  color: #c82333 !important;
+}
+.schedule-member-generic-bypass-btn.btn:focus-visible {
+  outline: 2px solid #dc3545;
+  outline-offset: 2px;
+}
+
+/** DEVE con vincolo generico superato: stesso bordo rosso del bypass, interno verde. */
+.schedule-member-must-generic-bypass-btn.btn {
+  background-color: #198754 !important;
+  border: 2px solid #dc3545 !important;
+  color: #fff !important;
+}
+.schedule-member-must-generic-bypass-btn.btn:focus-visible {
+  outline: 2px solid #dc3545;
+  outline-offset: 2px;
+}
+
+.turny-modal .modal-header {
+  padding: 0.9rem 1rem;
+  border-bottom-color: #e8efea;
+}
+
+.turny-modal .modal-body {
+  padding: 1rem;
+}

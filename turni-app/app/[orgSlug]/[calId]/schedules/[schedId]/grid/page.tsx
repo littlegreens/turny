@@ -1,0 +1,226 @@
+import Link from "next/link";
+import { notFound, redirect } from "next/navigation";
+import { getServerSession } from "next-auth";
+import { AppBreadcrumbs } from "@/components/app-breadcrumbs";
+import { ScheduleGridPanel } from "@/components/schedule-grid-panel";
+import { authOptions } from "@/lib/auth";
+import { hasAnyRole, normalizeRoles } from "@/lib/org-roles";
+import { canEditScheduleAssignments } from "@/lib/schedule-access";
+import { fetchOrgMemberDisplayColors } from "@/lib/org-member-display-colors";
+import { prisma } from "@/lib/prisma";
+import { resolveMemberRowColor } from "@/lib/member-row-color";
+import { buildScheduleReport } from "@/lib/schedule-report";
+
+type Props = {
+  params: Promise<{ orgSlug: string; calId: string; schedId: string }>;
+  searchParams?: Promise<{ preview?: string }>;
+};
+
+export default async function ScheduleGridPage({ params, searchParams }: Props) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) redirect("/login");
+
+  const { orgSlug, calId, schedId } = await params;
+  const qs = searchParams ? await searchParams : undefined;
+  const initialPreviewOpen = qs?.preview === "1";
+  const schedule = await prisma.schedule.findUnique({
+    where: { id: schedId },
+    include: { calendar: { include: { org: true } } },
+  });
+  if (!schedule || schedule.calendarId !== calId || schedule.calendar.org.slug !== orgSlug) notFound();
+
+  const membership = await prisma.orgMember.findFirst({
+    where: { userId: session.user.id, orgId: schedule.calendar.orgId },
+  });
+  if (!membership) notFound();
+  const roles = normalizeRoles([membership.role, ...membership.roles]);
+  const isManagerOnly = hasAnyRole(roles, ["MANAGER"]) && !hasAnyRole(roles, ["OWNER", "ADMIN"]);
+  if (isManagerOnly) {
+    const assigned = await prisma.calendarMember.findUnique({
+      where: { calendarId_userId: { calendarId: schedule.calendarId, userId: session.user.id } },
+    });
+    if (!assigned) notFound();
+  }
+
+  const [shiftTypes, members, assignments, monthlyConstraints] = await Promise.all([
+    prisma.shiftType.findMany({
+      where: { calendarId: schedule.calendarId, isActive: true },
+      orderBy: [{ order: "asc" }, { createdAt: "asc" }],
+    }),
+    prisma.calendarMember.findMany({
+      where: { calendarId: schedule.calendarId, isActive: true },
+      include: {
+        user: { select: { firstName: true, lastName: true, email: true, professionalRole: true } },
+        constraints: {
+          where: {
+            OR: [
+              { type: { in: ["UNAVAILABLE_WEEKDAY", "MAX_SHIFTS_WEEK", "UNAVAILABLE_SHIFT"] } },
+              { type: "CUSTOM", note: "MEMBER_COLOR" },
+            ],
+          },
+          select: { type: true, value: true, note: true },
+        },
+      },
+      orderBy: { joinedAt: "asc" },
+    }),
+    prisma.shiftAssignment.findMany({
+      where: { scheduleId: schedule.id },
+      include: {
+        member: { include: { user: { select: { firstName: true, lastName: true, email: true } } } },
+        shiftType: { select: { id: true, name: true, color: true } },
+      },
+      orderBy: [{ date: "asc" }, { createdAt: "asc" }],
+    }),
+    prisma.monthlyConstraint.findMany({
+      where: { scheduleId: schedule.id },
+      select: { id: true, memberId: true, type: true, value: true },
+    }),
+  ]);
+
+  const gridMonthlyTypes = new Set([
+    "UNAVAILABLE_DATE",
+    "UNAVAILABLE_SHIFT",
+    "REQUIRED_DATE",
+    "REQUIRED_SHIFT",
+  ]);
+  const monthlyConstraintsForGrid = monthlyConstraints.filter((c) => gridMonthlyTypes.has(String(c.type)));
+
+  const userIds = [...new Set(members.map((m) => m.userId))];
+  const orgMemberColors = await fetchOrgMemberDisplayColors(schedule.calendar.orgId, userIds);
+  const orgColorByUser = new Map(orgMemberColors.map((o) => [o.userId, o]));
+
+  const canEdit = canEditScheduleAssignments(roles, schedule.status);
+  const canManageSchedule = hasAnyRole(roles, ["OWNER", "ADMIN", "MANAGER"]);
+  const periodMeta = (schedule.generationLog ?? {}) as { startDate?: string; endDate?: string; periodType?: string };
+  const schedulePeriodType =
+    periodMeta.periodType === "WEEKLY" || periodMeta.periodType === "CUSTOM" ? periodMeta.periodType : "MONTHLY";
+  const periodLabel =
+    periodMeta.periodType === "WEEKLY" || periodMeta.periodType === "CUSTOM"
+      ? `dal ${periodMeta.startDate ?? "?"} al ${periodMeta.endDate ?? "?"}`
+      : `${new Intl.DateTimeFormat("it-IT", { month: "long" }).format(new Date(schedule.year, schedule.month - 1, 1))} ${schedule.year}`;
+
+  const report = buildScheduleReport({
+    year: schedule.year,
+    month: schedule.month,
+    shiftTypes: shiftTypes.map((st) => ({
+      id: st.id,
+      name: st.name,
+      minStaff: st.minStaff,
+      maxStaff: st.maxStaff,
+      durationHours: st.durationHours,
+      activeWeekdays: st.activeWeekdays,
+    })),
+    assignments: assignments.map((a) => ({
+      memberId: a.memberId,
+      shiftTypeId: a.shiftTypeId,
+      date: a.date.toISOString().slice(0, 10),
+    })),
+    members: members.map((m) => ({
+      id: m.id,
+      label: `${`${m.user.firstName} ${m.user.lastName}`.trim() || m.user.email}`,
+      email: m.user.email,
+      professionalRole: m.user.professionalRole || "",
+      contractMode: m.contractMode,
+    })),
+  });
+
+  const reportCsvFilename = `turni-${schedule.year}-${String(schedule.month).padStart(2, "0")}-${schedule.calendar.name.replace(/\s+/g, "-")}.csv`;
+
+  return (
+    <>
+      <AppBreadcrumbs
+        items={[
+          { label: "Home", href: "/" },
+          { label: "Turni", href: `/${orgSlug}/turni` },
+          { label: "Configuratore turni" },
+        ]}
+      />
+
+      <h2 className="h2 fw-bold mt-3">Configurazione turni</h2>
+      <p className="text-secondary mb-3">
+        Calendario {schedule.calendar.name}, periodo {periodLabel}. Assegna le persone per giorno e tipo turno con controllo conflitti in tempo reale.
+        {schedule.status !== "DRAFT" ? " Modifica consentita solo in bozza." : ""}
+      </p>
+
+      <ScheduleGridPanel
+        scheduleId={schedule.id}
+        orgSlug={orgSlug}
+        calId={calId}
+        scheduleStatus={schedule.status}
+        canManageSchedule={canManageSchedule}
+        calendarName={schedule.calendar.name}
+        periodLabel={periodLabel}
+        schedulePeriodType={schedulePeriodType}
+        initialPreviewOpen={initialPreviewOpen}
+        currentUserId={session.user.id}
+        year={schedule.year}
+        month={schedule.month}
+        startDate={periodMeta.startDate}
+        endDate={periodMeta.endDate}
+        canEdit={canEdit}
+        shiftTypes={shiftTypes.map((st) => ({
+          id: st.id,
+          name: st.name,
+          startTime: st.startTime,
+          endTime: st.endTime,
+          color: st.color,
+          minStaff: st.minStaff,
+          maxStaff: st.maxStaff,
+          activeWeekdays: st.activeWeekdays,
+        }))}
+        members={members.map((m) => {
+          const calColor =
+            (m.constraints.find((c) => c.type === "CUSTOM" && c.note === "MEMBER_COLOR")?.value as { color?: string } | undefined)?.color ??
+            null;
+          const orgRow = orgColorByUser.get(m.userId);
+          const memberColor = resolveMemberRowColor({
+            calendarConstraintColor: calColor,
+            orgDefaultColor: orgRow?.defaultDisplayColor ?? null,
+            orgUseDefaultInCalendars: orgRow?.useDisplayColorInCalendars ?? true,
+          });
+          return {
+            id: m.id,
+            userId: m.userId,
+            label: `${`${m.user.firstName} ${m.user.lastName}`.trim() || m.user.email}`,
+            contractShiftsWeek: m.contractShiftsWeek ?? null,
+            contractShiftsMonth: m.contractShiftsMonth ?? null,
+            baseUnavailableWeekdays: m.constraints
+              .filter((c) => c.type === "UNAVAILABLE_WEEKDAY")
+              .map((c) => Number((c.value as { weekday?: number }).weekday))
+              .filter((n) => !Number.isNaN(n)),
+            baseUnavailableShiftTypeIds: m.constraints
+              .filter((c) => c.type === "UNAVAILABLE_SHIFT")
+              .map((c) => String((c.value as { shiftTypeId?: string }).shiftTypeId ?? ""))
+              .filter(Boolean),
+            memberColor,
+            calendarColorOverride: calColor,
+          };
+        })}
+        assignments={assignments.map((a) => ({
+          id: a.id,
+          memberId: a.memberId,
+          shiftTypeId: a.shiftTypeId,
+          date: a.date.toISOString().slice(0, 10),
+          memberLabel: `${`${a.member.user.firstName} ${a.member.user.lastName}`.trim() || a.member.user.email}`,
+          shiftTypeName: a.shiftType.name,
+          shiftTypeColor: a.shiftType.color,
+        }))}
+        monthlyUnavailable={monthlyConstraintsForGrid.map((c) => ({
+          id: c.id,
+          memberId: c.memberId,
+          date: (c.value as { date?: string })?.date ?? "",
+          type: c.type as "UNAVAILABLE_DATE" | "UNAVAILABLE_SHIFT" | "REQUIRED_DATE" | "REQUIRED_SHIFT",
+          shiftTypeId: (c.value as { shiftTypeId?: string })?.shiftTypeId ?? null,
+        }))}
+        reportSummary={report}
+        reportCsvFilename={reportCsvFilename}
+      />
+
+      <div className="mt-4">
+        <Link href={`/${orgSlug}/${calId}/schedules`} className="link-dark">
+          Torna ai turni mensili
+        </Link>
+      </div>
+    </>
+  );
+}
