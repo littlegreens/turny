@@ -6,6 +6,7 @@ import { type DragEvent, useEffect, useMemo, useRef, useState } from "react";
 import { ConfirmModal } from "@/components/confirm-modal";
 import { useBeforeUnloadWhen } from "@/hooks/use-unsaved-prompt";
 import { ColorPalettePicker } from "@/components/color-palette-picker";
+import { DateMultiPicker } from "@/components/date-multi-picker";
 import { InfeasibleGenerateModal } from "@/components/infeasible-generate-modal";
 import { ScheduleReportCsvButton } from "@/components/schedule-report-csv-button";
 import type { InfeasibilityHints } from "@/lib/infeasibility-hints";
@@ -26,8 +27,12 @@ type MemberOpt = {
   id: string;
   userId?: string;
   label: string;
+  professionalRole?: string;
   contractShiftsWeek: number | null;
   contractShiftsMonth: number | null;
+  configMaxNights: number | null;
+  configMaxSaturdays: number | null;
+  configMaxSundays: number | null;
   baseUnavailableWeekdays: number[];
   baseUnavailableShiftTypeIds: string[];
   memberColor: string | null;
@@ -72,6 +77,7 @@ type Props = {
   startDate?: string;
   endDate?: string;
   canEdit: boolean;
+  scheduleRules?: unknown;
   shiftTypes: ShiftTypeCol[];
   members: MemberOpt[];
   assignments: GridAssignment[];
@@ -134,7 +140,7 @@ function formatReportCellDate(iso: string) {
 function memberShiftTargetsLine(m: MemberOpt | undefined): string {
   if (!m) return "nessuno";
   const parts: string[] = [];
-  if (m.contractShiftsMonth != null) parts.push(`fino a ${m.contractShiftsMonth} turni nel mese`);
+  if (m.contractShiftsMonth != null) parts.push(`fino a ${m.contractShiftsMonth} turni nel periodo`);
   if (m.contractShiftsWeek != null) parts.push(`fino a ${m.contractShiftsWeek} turni nella settimana`);
   return parts.length ? parts.join(" · ") : "nessuno";
 }
@@ -175,6 +181,7 @@ export function ScheduleGridPanel({
   startDate,
   endDate,
   canEdit,
+  scheduleRules,
   shiftTypes,
   members,
   assignments,
@@ -183,6 +190,7 @@ export function ScheduleGridPanel({
   reportCsvFilename,
 }: Props) {
   const router = useRouter();
+  const canEditRules = canEdit && scheduleStatus === "DRAFT";
   const [loadingKey, setLoadingKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
@@ -205,6 +213,26 @@ export function ScheduleGridPanel({
   const [dragging, setDragging] = useState(false);
   /** Riepilogo, KPI, copertura e alert griglia solo su richiesta (evita liste enormi a calendario vuoto). */
   const [reportPanelOpen, setReportPanelOpen] = useState(false);
+  type RuleDraft = {
+    id: string;
+    name: string;
+    kind: "ALWAYS_WITH" | "NEVER_WITH";
+    ifSelectors: string[];
+    thenSelectors: string[];
+    dates?: string[];
+  };
+  const [rulesDraft, setRulesDraft] = useState<RuleDraft[]>([]);
+  const [ruleModalOpen, setRuleModalOpen] = useState(false);
+  const [ruleModalError, setRuleModalError] = useState<string | null>(null);
+  const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
+  const [deleteRuleTargetId, setDeleteRuleTargetId] = useState<string | null>(null);
+  const [ruleName, setRuleName] = useState("");
+  const [ruleKind, setRuleKind] = useState<"ALWAYS_WITH" | "NEVER_WITH">("ALWAYS_WITH");
+  const [ruleIfSelectors, setRuleIfSelectors] = useState<string[]>([]);
+  const [ruleThenSelectors, setRuleThenSelectors] = useState<string[]>([]);
+  const [ruleDates, setRuleDates] = useState<string[]>([]);
+  const [ifQuery, setIfQuery] = useState("");
+  const [thenQuery, setThenQuery] = useState("");
   const [infeasibleModal, setInfeasibleModal] = useState<{
     open: boolean;
     message: string;
@@ -228,6 +256,134 @@ export function ScheduleGridPanel({
     const timer = setTimeout(() => setError(null), 4200);
     return () => clearTimeout(timer);
   }, [error]);
+
+  useEffect(() => {
+    const raw = (scheduleRules ?? {}) as { coPresenceRules?: unknown };
+    const list = Array.isArray(raw.coPresenceRules) ? raw.coPresenceRules : [];
+    const normalized = list
+      .filter((r): r is Record<string, unknown> => Boolean(r && typeof r === "object"))
+      .map((r) => ({
+        id: String(r.id || crypto.randomUUID()),
+        name: String(r.name || "Regola"),
+        kind: r.kind === "NEVER_WITH" ? ("NEVER_WITH" as const) : ("ALWAYS_WITH" as const),
+        ifSelectors: Array.isArray(r.ifSelectors)
+          ? r.ifSelectors.map(String).filter(Boolean)
+          : Array.isArray(r.ifMemberIds)
+            ? r.ifMemberIds.map((id) => `MEMBER:${String(id)}`).filter(Boolean)
+            : [],
+        thenSelectors: Array.isArray(r.thenSelectors)
+          ? r.thenSelectors.map(String).filter(Boolean)
+          : Array.isArray(r.thenMemberIds)
+            ? r.thenMemberIds.map((id) => `MEMBER:${String(id)}`).filter(Boolean)
+            : [],
+        dates: Array.isArray(r.dates) ? r.dates.map(String).filter(Boolean) : undefined,
+      }))
+      .filter((r) => r.ifSelectors.length && r.thenSelectors.length);
+    setRulesDraft(normalized);
+  }, [scheduleRules]);
+
+  const roleOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const m of members) {
+      const r = String(m.professionalRole ?? "").trim();
+      if (r) set.add(r);
+    }
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [members]);
+
+  const selectorOptions = useMemo(() => {
+    const out: Array<{ key: string; label: string; kind: "ROLE" | "MEMBER"; color?: string | null }> = [];
+    for (const r of roleOptions) out.push({ key: `ROLE:${r}`, label: `Ruolo: ${r}`, kind: "ROLE" });
+    for (const m of members) out.push({ key: `MEMBER:${m.id}`, label: m.label, kind: "MEMBER", color: m.memberColor });
+    return out;
+  }, [members, roleOptions]);
+
+  function selectorLabel(sel: string): string {
+    if (sel.startsWith("ROLE:")) return `Ruolo: ${sel.slice("ROLE:".length)}`;
+    if (sel.startsWith("MEMBER:")) {
+      const id = sel.slice("MEMBER:".length);
+      return members.find((m) => m.id === id)?.label ?? `Persona: ${id}`;
+    }
+    return sel;
+  }
+
+  function selectorColor(sel: string): string | null {
+    if (!sel.startsWith("MEMBER:")) return null;
+    const id = sel.slice("MEMBER:".length);
+    return members.find((m) => m.id === id)?.memberColor ?? null;
+  }
+
+  function openRuleModal(ruleId: string | null) {
+    setRuleModalError(null);
+    if (!ruleId) {
+      setEditingRuleId(null);
+      setRuleName("");
+      setRuleKind("ALWAYS_WITH");
+      setRuleIfSelectors([]);
+      setRuleThenSelectors([]);
+      setRuleDates([]);
+      setIfQuery("");
+      setThenQuery("");
+      setRuleModalOpen(true);
+      return;
+    }
+    const r = rulesDraft.find((x) => x.id === ruleId);
+    if (!r) return;
+    setEditingRuleId(r.id);
+    setRuleName(r.name);
+    setRuleKind(r.kind);
+    setRuleIfSelectors(r.ifSelectors);
+    setRuleThenSelectors(r.thenSelectors);
+    setRuleDates(r.dates ?? []);
+    setIfQuery("");
+    setThenQuery("");
+    setRuleModalOpen(true);
+  }
+
+  async function saveAllRules(nextRules: RuleDraft[], fromModal = false) {
+    if (!canEditRules) {
+      const msg = "Le regole turno si possono modificare solo quando il turno è in bozza.";
+      if (fromModal) setRuleModalError(msg); else setError(msg);
+      return false;
+    }
+    setLoadingKey("rules");
+    if (fromModal) setRuleModalError(null); else setError(null);
+    try {
+      const cleaned = nextRules
+        .map((r) => ({
+          id: r.id,
+          name: r.name.trim(),
+          kind: r.kind,
+          ifSelectors: [...new Set(r.ifSelectors)].filter(Boolean),
+          thenSelectors: [...new Set(r.thenSelectors)].filter(Boolean),
+          dates: r.dates && r.dates.length ? [...new Set(r.dates)].filter(Boolean).sort() : undefined,
+        }))
+        .filter((r) => r.name.length >= 2 && r.ifSelectors.length && r.thenSelectors.length);
+      const res = await fetch(`/api/schedules/${scheduleId}/rules`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ coPresenceRules: cleaned }),
+      });
+      const rawText = await res.text().catch(() => "");
+      let payload: { error?: string } = {};
+      try { payload = JSON.parse(rawText) as { error?: string }; } catch { /* not json */ }
+      if (!res.ok) {
+        const msg = payload.error ?? `Errore ${res.status}: ${rawText.slice(0, 200) || "risposta non valida"}`;
+        if (fromModal) setRuleModalError(msg); else setError(msg);
+        return false;
+      }
+      setRulesDraft(cleaned);
+      setInfo("Regole salvate.");
+      router.refresh();
+      return true;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (fromModal) setRuleModalError(msg); else setError(msg);
+      return false;
+    } finally {
+      setLoadingKey(null);
+    }
+  }
 
   const dates = useMemo(() => {
     if (startDate && endDate && endDate >= startDate) {
@@ -703,15 +859,7 @@ export function ScheduleGridPanel({
         return;
       }
       const created = payload.created ?? 0;
-      const genAlerts = payload.alerts ?? [];
-      const parts: string[] = [`Generazione completata: ${created} assegnazioni create.`];
-      if (genAlerts.length > 0) {
-        parts.push(`Avvisi sul piano (${genAlerts.length}):`);
-        for (const a of genAlerts) {
-          if (a.message) parts.push(`• ${a.message}`);
-        }
-      }
-      setInfo(parts.join(" "));
+      setInfo(`Generazione completata: ${created} assegnazioni create.`);
       router.refresh();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -1130,7 +1278,6 @@ export function ScheduleGridPanel({
           {info}
         </div>
       ) : null}
-
       {canManageSchedule || canEdit ? (
         <div className="mb-3 d-flex justify-content-end gap-2 flex-wrap">
           {canManageSchedule && scheduleStatus === "ARCHIVED" ? (
@@ -1399,14 +1546,256 @@ export function ScheduleGridPanel({
       </div>
 
       {!reportPanelOpen ? (
-        <div className="mt-3 d-flex flex-wrap align-items-center gap-2">
-          <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => setReportPanelOpen(true)}>
-            Visualizza report
-          </button>
-          <span className="small text-secondary mb-0">
-            Riepilogo, totali, copertura e alert dalla griglia compaiono solo dopo «Visualizza report».
-          </span>
-        </div>
+        <>
+          <section className="card mt-3">
+            <div className="card-body py-3">
+              <div>
+                <h2 className="h6 fw-semibold mb-1">Regole turno</h2>
+                <p className="small text-secondary mb-0">
+                  Regole HARD per slot (giorno×turno): co-presenza (“deve stare con”) ed esclusione (“non deve stare con”).
+                </p>
+                {!canEditRules ? (
+                  <p className="small text-warning mb-0 mt-1">Modifica consentita solo quando il turno è in bozza.</p>
+                ) : null}
+              </div>
+
+              {rulesDraft.length === 0 ? (
+                <div className="mt-3 d-flex justify-content-between align-items-center gap-2 flex-wrap">
+                  <p className="small text-secondary mb-0">Non ci sono regole.</p>
+                  <button type="button" className="btn btn-sm btn-success" onClick={() => openRuleModal(null)} disabled={!canEditRules || loadingKey !== null}>
+                    Aggiungi regola
+                  </button>
+                </div>
+              ) : (
+                <div className="d-grid gap-2 mt-3">
+                  {rulesDraft.map((r) => (
+                    <div key={r.id} className="border rounded-3 p-3 d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                      <div style={{ minWidth: 260, flex: 1 }}>
+                        <div className="fw-semibold">{r.name}</div>
+                        <div className="small text-secondary">
+                          {r.kind === "ALWAYS_WITH" ? "Deve stare con" : "Non deve stare con"} ·{" "}
+                          {(r.dates && r.dates.length) ? `${r.dates.length} giorni selezionati` : "Sempre (tutto il periodo)"}
+                        </div>
+                      </div>
+                      <div className="d-flex gap-2">
+                        <button type="button" className="btn btn-sm btn-outline-success" onClick={() => openRuleModal(r.id)} disabled={loadingKey !== null || !canEditRules}>
+                          Modifica
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-danger"
+                          onClick={() => setDeleteRuleTargetId(r.id)}
+                          disabled={loadingKey !== null || !canEditRules}
+                        >
+                          Elimina
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="d-flex justify-content-end mt-1">
+                    <button type="button" className="btn btn-sm btn-success" onClick={() => openRuleModal(null)} disabled={!canEditRules || loadingKey !== null}>
+                      Aggiungi regola
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </section>
+
+          <div className="mt-3 d-flex flex-wrap align-items-center gap-2">
+            <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => setReportPanelOpen(true)}>
+              Visualizza report
+            </button>
+            <span className="small text-secondary mb-0">
+              Riepilogo, totali, copertura e alert dalla griglia compaiono solo dopo «Visualizza report».
+            </span>
+          </div>
+        </>
+      ) : null}
+
+      {ruleModalOpen ? (
+        <>
+          <div className="modal fade show d-block" tabIndex={-1} role="dialog" aria-modal="true">
+            <div className="modal-dialog modal-dialog-centered modal-xl">
+              <div className="modal-content turny-modal">
+                <div className="modal-header">
+                  <h5 className="modal-title">{editingRuleId ? "Modifica regola" : "Nuova regola"}</h5>
+                  <button type="button" className="btn-close" aria-label="Chiudi" onClick={() => setRuleModalOpen(false)} />
+                </div>
+                <div className="modal-body pb-4">
+                  {ruleModalError ? <div className="alert alert-danger py-2 mb-3">{ruleModalError}</div> : null}
+                  <div className="row g-3">
+                    <div className="col-12 col-lg-6">
+                      <label className="form-label small mb-1">Nome</label>
+                      <input
+                        className="form-control"
+                        value={ruleName}
+                        onChange={(e) => setRuleName(e.target.value)}
+                        placeholder="Es. Tirocinante con tutor"
+                      />
+                    </div>
+
+                    <div className="col-12 col-lg-6">
+                      <label className="form-label small mb-1">Giorni (opzionale)</label>
+                      <div>
+                        <DateMultiPicker
+                          selectedDates={ruleDates}
+                          onChange={setRuleDates}
+                          allowedDates={dates}
+                          triggerLabel="Seleziona giorni"
+                        />
+                        {!ruleDates.length ? <span className="small text-secondary d-block mt-1">Lascia vuoto → vale per tutto il periodo</span> : null}
+                      </div>
+                    </div>
+
+                    <div className="col-12 col-lg-5">
+                      <label className="form-label small mb-1">Se (persona/ruolo)</label>
+                      <input
+                        className="form-control"
+                        value={ifQuery}
+                        onChange={(e) => setIfQuery(e.target.value)}
+                        placeholder="Scrivi per cercare persone o ruoli…"
+                      />
+                      {ifQuery.trim() ? (
+                        <div className="border rounded-3 mt-2 bg-white" style={{ maxHeight: 220, overflowY: "auto" }}>
+                          {selectorOptions
+                            .filter((o) => o.label.toLowerCase().includes(ifQuery.trim().toLowerCase()))
+                            .slice(0, 30)
+                            .map((o) => (
+                              <button
+                                key={`ifopt-${o.key}`}
+                                type="button"
+                                className="w-100 text-start bg-white border-0 py-2 px-2"
+                                onClick={() => {
+                                  setRuleIfSelectors((prev) => (prev.includes(o.key) ? prev : [...prev, o.key]));
+                                  setIfQuery("");
+                                }}
+                                style={{ borderBottom: "1px solid #eef2f3" }}
+                              >
+                                {o.label}
+                              </button>
+                            ))}
+                        </div>
+                      ) : null}
+                      {ruleIfSelectors.length ? (
+                        <div className="d-flex flex-wrap gap-1 mt-2">
+                          {ruleIfSelectors.map((s) => (
+                            <span
+                              key={`ifsel-${s}`}
+                              className="badge border d-inline-flex align-items-center gap-1"
+                              style={
+                                s.startsWith("ROLE:")
+                                  ? { backgroundColor: "#f3f4f6", color: "#374151" }
+                                  : { backgroundColor: `${selectorColor(s) ?? "#1f7a3f"}1f`, color: selectorColor(s) ?? "#1f7a3f" }
+                              }
+                            >
+                              {selectorLabel(s)}{" "}
+                              <button type="button" className="border-0 bg-transparent" onClick={() => setRuleIfSelectors((p) => p.filter((x) => x !== s))}>
+                                ✕
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="col-12 col-lg-2">
+                      <label className="form-label small mb-1">Relazione</label>
+                      <select
+                        className="form-select"
+                        value={ruleKind}
+                        onChange={(e) => setRuleKind(e.target.value === "NEVER_WITH" ? "NEVER_WITH" : "ALWAYS_WITH")}
+                      >
+                        <option value="ALWAYS_WITH">Deve stare con</option>
+                        <option value="NEVER_WITH">Non deve stare con</option>
+                      </select>
+                    </div>
+
+                    <div className="col-12 col-lg-5">
+                      <label className="form-label small mb-1">Con (persona/ruolo)</label>
+                      <input
+                        className="form-control"
+                        value={thenQuery}
+                        onChange={(e) => setThenQuery(e.target.value)}
+                        placeholder="Scrivi per cercare persone o ruoli…"
+                      />
+                      {thenQuery.trim() ? (
+                        <div className="border rounded-3 mt-2 bg-white" style={{ maxHeight: 220, overflowY: "auto" }}>
+                          {selectorOptions
+                            .filter((o) => o.label.toLowerCase().includes(thenQuery.trim().toLowerCase()))
+                            .slice(0, 30)
+                            .map((o) => (
+                              <button
+                                key={`thenopt-${o.key}`}
+                                type="button"
+                                className="w-100 text-start bg-white border-0 py-2 px-2"
+                                onClick={() => {
+                                  setRuleThenSelectors((prev) => (prev.includes(o.key) ? prev : [...prev, o.key]));
+                                  setThenQuery("");
+                                }}
+                                style={{ borderBottom: "1px solid #eef2f3" }}
+                              >
+                                {o.label}
+                              </button>
+                            ))}
+                        </div>
+                      ) : null}
+                      {ruleThenSelectors.length ? (
+                        <div className="d-flex flex-wrap gap-1 mt-2">
+                          {ruleThenSelectors.map((s) => (
+                            <span
+                              key={`thensel-${s}`}
+                              className="badge border d-inline-flex align-items-center gap-1"
+                              style={
+                                s.startsWith("ROLE:")
+                                  ? { backgroundColor: "#f3f4f6", color: "#374151" }
+                                  : { backgroundColor: `${selectorColor(s) ?? "#1f7a3f"}1f`, color: selectorColor(s) ?? "#1f7a3f" }
+                              }
+                            >
+                              {selectorLabel(s)}{" "}
+                              <button type="button" className="border-0 bg-transparent" onClick={() => setRuleThenSelectors((p) => p.filter((x) => x !== s))}>
+                                ✕
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+                <div className="modal-footer d-flex justify-content-between">
+                  <button type="button" className="btn btn-outline-secondary" onClick={() => setRuleModalOpen(false)} disabled={loadingKey !== null}>
+                    Annulla
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-success"
+                    disabled={loadingKey !== null || !canEditRules || ruleName.trim().length < 2 || ruleIfSelectors.length === 0 || ruleThenSelectors.length === 0}
+                    onClick={() => {
+                      const id = editingRuleId ?? crypto.randomUUID();
+                      const next: RuleDraft = {
+                        id,
+                        name: ruleName.trim(),
+                        kind: ruleKind,
+                        ifSelectors: ruleIfSelectors,
+                        thenSelectors: ruleThenSelectors,
+                        dates: ruleDates.length ? ruleDates : undefined,
+                      };
+                      const nextRules = editingRuleId ? rulesDraft.map((r) => (r.id === id ? next : r)) : [...rulesDraft, next];
+                      void (async () => {
+                        const ok = await saveAllRules(nextRules, true);
+                        if (ok) setRuleModalOpen(false);
+                      })();
+                    }}
+                  >
+                    Salva
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div role="presentation" onClick={() => setRuleModalOpen(false)} style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.06)", zIndex: 1040 }} />
+        </>
       ) : null}
 
       {reportPanelOpen ? (
@@ -1420,6 +1809,9 @@ export function ScheduleGridPanel({
               rows={riepilogoPerPersona.map((r) => ({
                 label: r.label,
                 shiftCount: r.shiftCount,
+                nightCount: r.nightCount,
+                satCount: r.satCount,
+                sunCount: r.sunCount,
                 hoursTotal: r.hoursTotal,
                 freeDays: r.freeDays,
                 freeWeekend: r.freeWeekend,
@@ -1432,9 +1824,11 @@ export function ScheduleGridPanel({
                 <tr>
                   <th className="py-2 ps-3 pe-3">Persona</th>
                   <th className="text-end">Turni</th>
+                  <th className="text-end">Notti</th>
+                  <th className="text-end">Sabati</th>
+                  <th className="text-end">Domeniche</th>
                   <th className="text-end">Ore</th>
-                  <th className="text-end">Giorni liberi</th>
-                  <th className="text-end">WE liberi</th>
+                  <th className="text-end">Gg liberi</th>
                 </tr>
               </thead>
               <tbody>
@@ -1445,9 +1839,11 @@ export function ScheduleGridPanel({
                     <tr key={r.memberId} style={{ backgroundColor: rowBg }}>
                       <td className="py-2 ps-3 pe-3">{r.label}</td>
                       <td className="text-end">{r.shiftCount}</td>
+                      <td className="text-end">{r.nightCount > 0 ? r.nightCount : "—"}</td>
+                      <td className="text-end">{r.satCount > 0 ? r.satCount : "—"}</td>
+                      <td className="text-end">{r.sunCount > 0 ? r.sunCount : "—"}</td>
                       <td className="text-end">{r.hoursTotal}</td>
                       <td className="text-end">{r.freeDays}</td>
-                      <td className="text-end">{r.freeWeekend}</td>
                     </tr>
                   );
                 })}
@@ -1455,8 +1851,7 @@ export function ScheduleGridPanel({
             </table>
           </div>
           <p className="small text-secondary mt-2 mb-0">
-            Giorni liberi: giorni del periodo senza turni. WE liberi: fine settimana intere libere (sabato e domenica
-            entrambi nel periodo e senza turni; ogni coppia conta 1).
+            Gg liberi: giorni del periodo senza turni assegnati.
           </p>
         </div>
       </section>
@@ -1664,39 +2059,60 @@ export function ScheduleGridPanel({
         onCancel={() => setRestoreOpen(false)}
         onConfirm={() => void restoreSchedule()}
       />
+      <ConfirmModal
+        open={deleteRuleTargetId !== null}
+        title="Elimina regola"
+        message="Sei sicuro di voler eliminare questa regola? L'operazione non è reversibile."
+        confirmLabel="Elimina"
+        confirmVariant="danger"
+        loading={loadingKey === "rules"}
+        onCancel={() => setDeleteRuleTargetId(null)}
+        onConfirm={() => {
+          if (!deleteRuleTargetId) return;
+          const next = rulesDraft.filter((x) => x.id !== deleteRuleTargetId);
+          void (async () => {
+            await saveAllRules(next, false);
+            setDeleteRuleTargetId(null);
+          })();
+        }}
+      />
       {memberPopupOpen && selectedMemberId ? (
         <>
           <div className="modal fade show d-block" tabIndex={-1} role="dialog" aria-modal="true">
             <div className="modal-dialog modal-dialog-centered modal-lg">
               <div className="modal-content turny-modal">
                 <div className="modal-header">
-                  <h5 className="modal-title">
-                    Scheda turni {memberById.get(selectedMemberId)?.label ?? ""}
-                  </h5>
+                  <div>
+                    <h5 className="modal-title mb-0">
+                      Scheda turni {memberById.get(selectedMemberId)?.label ?? ""}
+                    </h5>
+                    {memberById.get(selectedMemberId)?.professionalRole ? (
+                      <small className="text-secondary">{memberById.get(selectedMemberId)!.professionalRole}</small>
+                    ) : null}
+                  </div>
                   <button type="button" className="btn-close" aria-label="Chiudi" onClick={() => closeMemberPopup(false)} />
                 </div>
                 <div className="modal-body pb-4">
                   {(() => {
                     const mem = memberById.get(selectedMemberId);
-                    const baseDays =
-                      (mem?.baseUnavailableWeekdays ?? []).length > 0
-                        ? (mem?.baseUnavailableWeekdays ?? []).map((d) => weekdayLabel(d)).join(", ")
-                        : "nessuno";
-                    const baseShiftsStr =
-                      (mem?.baseUnavailableShiftTypeIds ?? []).length > 0
-                        ? (mem?.baseUnavailableShiftTypeIds ?? [])
-                            .map((id) => shiftTypes.find((s) => s.id === id)?.name)
-                            .filter((n): n is string => Boolean(n))
-                            .join(", ")
-                        : "nessuno";
+                    const cfgParts: { label: string; value: string }[] = [];
+                    if (mem?.contractShiftsMonth != null)
+                      cfgParts.push({ label: "Max turni", value: `fino a ${mem.contractShiftsMonth} nel periodo` });
+                    if (mem?.configMaxNights != null)
+                      cfgParts.push({ label: "Max notti", value: String(mem.configMaxNights) });
+                    if (mem?.configMaxSaturdays != null)
+                      cfgParts.push({ label: "Max sabati", value: String(mem.configMaxSaturdays) });
+                    if (mem?.configMaxSundays != null)
+                      cfgParts.push({ label: "Max domeniche", value: String(mem.configMaxSundays) });
+                    if (cfgParts.length === 0) return null;
                     return (
-                      <p className="small text-secondary mb-2">
-                        <strong>Turni:</strong> {memberShiftTargetsLine(mem)}
-                        <span className="mx-2 text-secondary">·</span>
-                        <strong>Giorni base indisponibili:</strong> {baseDays}
-                        <span className="mx-2 text-secondary">·</span>
-                        <strong>Turni base indisponibili:</strong> {baseShiftsStr}
-                      </p>
+                      <div className="d-flex flex-wrap gap-3 mb-2">
+                        {cfgParts.map((p) => (
+                          <span key={p.label} className="small text-secondary">
+                            <strong>{p.label}:</strong> {p.value}
+                          </span>
+                        ))}
+                      </div>
                     );
                   })()}
                   <div className="row g-3">

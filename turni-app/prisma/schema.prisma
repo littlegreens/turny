@@ -223,6 +223,8 @@ model Schedule {
   publishedAt   DateTime?
   publishedBy   String?
   generationLog Json?
+  /** Regole del periodo (wizard turni): es. co-presenza/evitamento per slot, opzionale. */
+  rules         Json?
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 

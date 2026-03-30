@@ -7,6 +7,7 @@ import { ScheduleReportCsvButton } from "@/components/schedule-report-csv-button
 import { authOptions } from "@/lib/auth";
 import { hasAnyRole, normalizeRoles } from "@/lib/org-roles";
 import { buildScheduleReport } from "@/lib/schedule-report";
+import { shiftIsNight } from "@/lib/scheduler-problem";
 import { prisma } from "@/lib/prisma";
 
 type Props = {
@@ -67,6 +68,7 @@ export default async function ScheduleReportPage({ params }: Props) {
       maxStaff: st.maxStaff,
       durationHours: st.durationHours,
       activeWeekdays: st.activeWeekdays,
+      isNight: shiftIsNight(st),
     })),
     assignments: assignments.map((a) => ({
       memberId: a.memberId,
@@ -112,6 +114,9 @@ export default async function ScheduleReportPage({ params }: Props) {
                 email: r.email,
                 professionalRole: r.professionalRole,
                 shiftCount: r.shiftCount,
+                nightCount: r.nightCount,
+                satCount: r.satCount,
+                sunCount: r.sunCount,
                 hoursTotal: r.hoursTotal,
                 contractMode: r.contractMode,
               }))}
@@ -152,6 +157,9 @@ export default async function ScheduleReportPage({ params }: Props) {
                     <th>Email</th>
                     <th>Ruolo prof.</th>
                     <th className="text-end">Turni</th>
+                    <th className="text-end">Notti</th>
+                    <th className="text-end">Sabati</th>
+                    <th className="text-end">Domeniche</th>
                     <th className="text-end">Ore</th>
                     <th>Contratto</th>
                   </tr>
@@ -163,6 +171,9 @@ export default async function ScheduleReportPage({ params }: Props) {
                       <td className="small">{r.email}</td>
                       <td className="small">{r.professionalRole || "—"}</td>
                       <td className="text-end">{r.shiftCount}</td>
+                      <td className="text-end">{r.nightCount > 0 ? r.nightCount : "—"}</td>
+                      <td className="text-end">{r.satCount > 0 ? r.satCount : "—"}</td>
+                      <td className="text-end">{r.sunCount > 0 ? r.sunCount : "—"}</td>
                       <td className="text-end">{r.hoursTotal}</td>
                       <td className="small">{r.contractMode}</td>
                     </tr>

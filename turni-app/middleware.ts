@@ -2,6 +2,16 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 
+function parseSuperAdminEmails(raw: string | undefined | null): Set<string> {
+  const out = new Set<string>();
+  const parts = String(raw ?? "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  for (const p of parts) out.add(p);
+  return out;
+}
+
 function isPublicPath(pathname: string) {
   return (
     pathname === "/" ||
@@ -27,6 +37,14 @@ export async function middleware(request: NextRequest) {
   if (!token) {
     const loginUrl = new URL("/login", request.url);
     return NextResponse.redirect(loginUrl);
+  }
+
+  if (pathname === "/admin" || pathname.startsWith("/admin/") || pathname.startsWith("/api/admin/")) {
+    const email = typeof token.email === "string" ? token.email : null;
+    const allowed = parseSuperAdminEmails(process.env.SUPER_ADMIN_EMAILS);
+    if (!email || !allowed.has(email.trim().toLowerCase())) {
+      return NextResponse.redirect(new URL("/", request.url));
+    }
   }
 
   return NextResponse.next();

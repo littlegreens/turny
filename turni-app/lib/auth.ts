@@ -28,7 +28,7 @@ export const authOptions: NextAuthOptions = {
          * Prima: se sembra un'email, cerca solo per email (univoca).
          * Evita findFirst+OR: due utenti potrebbero far collidere email e name, o l'ordine del DB poteva dare il record sbagliato.
          */
-        let user =
+        const user =
           loginValue.includes("@")
             ? await prisma.user.findUnique({
                 where: { email: loginValue.toLowerCase() },

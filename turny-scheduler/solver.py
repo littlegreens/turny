@@ -41,6 +41,9 @@ def solve_scheduling_problem(payload: dict[str, Any]) -> dict[str, Any]:
     members: list[dict[str, Any]] = problem.get("members") or []
     fixed: list[dict[str, Any]] = problem.get("fixedAssignments") or []
     rest_after_night = bool(problem.get("restAfterNight", True))
+    rest_days_after_night: int = int(problem.get("restDaysAfterNight", 1))
+    co_rules: list[dict[str, Any]] = problem.get("coPresenceRules") or []
+    dow_rules: list[dict[str, Any]] = problem.get("dowRules") or []
 
     st_by_id = {str(st["id"]): st for st in shift_types}
     D = len(dates)
@@ -196,6 +199,40 @@ def solve_scheduling_problem(payload: dict[str, Any]) -> dict[str, Any]:
         sn = str(shift_types[si].get("name") or st_id_at[si])
         cover_slacks.append((slack, n, dte, sn))
 
+    # Co-presenza / esclusione (HARD) per slot giorno×turno
+    if co_rules:
+        for rr in co_rules:
+            if not isinstance(rr, dict):
+                continue
+            kind = str(rr.get("kind") or "")
+            if kind not in ("ALWAYS_WITH", "NEVER_WITH"):
+                continue
+            if_ids = [str(v) for v in (rr.get("ifMemberIds") or []) if str(v)]
+            then_ids = [str(v) for v in (rr.get("thenMemberIds") or []) if str(v)]
+            if not if_ids or not then_ids:
+                continue
+            if_mis = [mid_by_cal[i] for i in if_ids if i in mid_by_cal]
+            then_mis = [mid_by_cal[i] for i in then_ids if i in mid_by_cal]
+            if not if_mis or not then_mis:
+                continue
+            rule_dates = rr.get("dates") or []
+            date_set = set(str(d) for d in rule_dates if isinstance(d, str) and d)
+
+            for di, dte in enumerate(dates):
+                if date_set and dte not in date_set:
+                    continue
+                for si in range(S):
+                    a_vars = [x[(mi, di, si)] for mi in if_mis if (mi, di, si) in x]
+                    b_vars = [x[(mi, di, si)] for mi in then_mis if (mi, di, si) in x]
+                    if not a_vars or not b_vars:
+                        continue
+                    if kind == "ALWAYS_WITH":
+                        model.Add(sum(a_vars) <= len(a_vars) * sum(b_vars))
+                    else:
+                        for av in a_vars:
+                            for bv in b_vars:
+                                model.Add(av + bv <= 1)
+
     for mi in range(M):
         for di in range(D):
             xs = [x[(mi, di, si)] for si in range(S) if (mi, di, si) in x]
@@ -346,6 +383,7 @@ def solve_scheduling_problem(payload: dict[str, Any]) -> dict[str, Any]:
 
     if rest_after_night:
         night_si = {si for si, st in enumerate(shift_types) if bool(st.get("isNight"))}
+        rest_days = max(1, min(int(rest_days_after_night), 3))
         for mi in range(M):
             for di in range(1, D):
                 np = model.NewBoolVar(f"npn_{mi}_{di}")
@@ -358,6 +396,45 @@ def solve_scheduling_problem(payload: dict[str, Any]) -> dict[str, Any]:
                 else:
                     model.Add(np == sum(pn_vars))
                 model.AddImplication(np, hw[mi][di].Not())
+                if rest_days >= 2 and di + 1 < D:
+                    model.AddImplication(np, hw[mi][di + 1].Not())
+
+    # Day-of-week rules: se lavora il giorno X → fa/non fa il giorno Y
+    # Per DAY_IMPLIES_DAY il lato FROM usa solo turni diurni (non notturni) per evitare
+    # il conflitto con rest_after_night: es. sabato-notte → riposo domenica contraddirebbe
+    # l'implicazione sabato→domenica. Chi fa notte attraversa già il giorno dopo per natura.
+    night_si_set = {si for si, st in enumerate(shift_types) if bool(st.get("isNight"))}
+    day_si_set = {si for si in range(S) if si not in night_si_set}
+
+    for rule in dow_rules:
+        from_dow = int(rule.get("fromDow", -1))
+        to_dow = int(rule.get("toDow", -1))
+        kind = str(rule.get("kind", ""))
+        if from_dow < 0 or to_dow < 0 or from_dow == to_dow:
+            continue
+        diff = (to_dow - from_dow) % 7
+        for mi in range(M):
+            for di in range(D):
+                if js_utcdow_from_iso(dates[di]) != from_dow:
+                    continue
+                dj = di + diff
+                if dj >= D:
+                    continue
+                if js_utcdow_from_iso(dates[dj]) != to_dow:
+                    continue
+                if kind == "DAY_IMPLIES_DAY":
+                    # L'implicazione scatta solo se il membro lavora un turno NON notturno
+                    # nel giorno FROM. I turni notturni non portano l'obbligo del giorno TO
+                    # perché il riposo post-notte ha priorità.
+                    day_xs = [x[(mi, di, si)] for si in day_si_set if (mi, di, si) in x]
+                    if not day_xs:
+                        continue
+                    works_day_shift = model.NewBoolVar(f"dow_day_{mi}_{di}")
+                    model.Add(sum(day_xs) >= 1).OnlyEnforceIf(works_day_shift)
+                    model.Add(sum(day_xs) == 0).OnlyEnforceIf(works_day_shift.Not())
+                    model.AddImplication(works_day_shift, hw[mi][dj])
+                elif kind == "DAY_EXCLUDES_DAY":
+                    model.AddBoolOr([hw[mi][di].Not(), hw[mi][dj].Not()])
 
     rng_seed = problem.get("randomSeed")
     if isinstance(rng_seed, int):

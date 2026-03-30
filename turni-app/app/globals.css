@@ -58,6 +58,14 @@ body {
   font-weight: 600;
 }
 
+/* Home: header fixed deve allinearsi alla sidebar su lg+ */
+@media (min-width: 992px) {
+  .home-with-sidebar .home-topbar {
+    left: 280px !important;
+    width: calc(100% - 280px) !important;
+  }
+}
+
 .input-underlined {
   border: none;
   border-bottom: 2px solid #c7d3cc;
@@ -91,6 +99,11 @@ button:focus-visible,
 
 .form-label {
   font-weight: 700 !important;
+}
+
+input:focus::placeholder,
+textarea:focus::placeholder {
+  color: transparent !important;
 }
 
 .input-underlined-compact {

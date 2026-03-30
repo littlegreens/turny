@@ -27,6 +27,8 @@ export type SchedulerMemberPayload = {
   id: string;
   /** Etichetta leggibile per alert dal solver (opzionale). */
   label?: string | null;
+  /** Ruolo (stringa) usato per espandere regole ROLE:* (opzionale). */
+  role?: string | null;
   isJolly: boolean;
   maxConsecutiveDays: number;
   /** Unione indisponibilità (giorni interi). ISO date → chiave ordinata. */
@@ -56,6 +58,16 @@ export type SchedulerFixedAssignment = {
   date: string;
 };
 
+export type SchedulerCoPresenceRule = {
+  id: string;
+  name: string;
+  kind: "ALWAYS_WITH" | "NEVER_WITH";
+  ifMemberIds: string[];
+  thenMemberIds: string[];
+  /** Se vuoto: applica su tutte le date del periodo. */
+  dates?: string[];
+};
+
 export type SchedulerProblemPayload = {
   schemaVersion: typeof SCHEDULER_PROBLEM_SCHEMA_VERSION;
   scheduleId: string;
@@ -67,6 +79,7 @@ export type SchedulerProblemPayload = {
   shiftTypes: SchedulerShiftTypePayload[];
   members: SchedulerMemberPayload[];
   fixedAssignments: SchedulerFixedAssignment[];
+  coPresenceRules?: SchedulerCoPresenceRule[];
   /**
    * Cambia i coefficienti minori nell’obiettivo CP-SAT → piani diversi tra un “Genera” e l’altro se le soluzioni erano equivalenti.
    */
@@ -97,7 +110,7 @@ function utcDow(dateStr: string): number {
   return new Date(`${dateStr}T00:00:00.000Z`).getUTCDay();
 }
 
-function shiftIsNight(st: { startTime: string; endTime: string; rules: unknown }): boolean {
+export function shiftIsNight(st: { startTime: string; endTime: string; rules: unknown }): boolean {
   const r = st.rules as { isNight?: boolean } | null | undefined;
   if (r?.isNight === true) return true;
   const ps = st.startTime.split(":").map(Number);
@@ -117,7 +130,7 @@ function shiftCountsWeekend(rules: unknown): boolean {
 
 /** Bugfix loop: iterazione corretta su range */
 function addRangeInclusive(out: Set<string>, start: string, end: string, scope: Set<string>) {
-  let cur = new Date(`${start}T00:00:00.000Z`);
+  const cur = new Date(`${start}T00:00:00.000Z`);
   const last = new Date(`${end}T00:00:00.000Z`);
   while (cur <= last) {
     const s = cur.toISOString().slice(0, 10);
@@ -158,11 +171,34 @@ function restAfterNightEnabled(rules: SchedulerCalendarRules | null): boolean {
   return true;
 }
 
+function restDaysAfterNight(rules: SchedulerCalendarRules | null): number {
+  if (!rules || typeof rules !== "object") return 1;
+  const v = (rules as { rest_days_after_night?: number }).rest_days_after_night;
+  return typeof v === "number" && v >= 1 ? Math.min(Math.floor(v), 3) : 1;
+}
+
+function extractDowRules(rules: SchedulerCalendarRules | null): Array<{ id: string; name: string; kind: string; fromDow: number; toDow: number }> {
+  if (!rules || typeof rules !== "object") return [];
+  const list = (rules as { dowRules?: unknown }).dowRules;
+  if (!Array.isArray(list)) return [];
+  return list
+    .filter((r): r is Record<string, unknown> => Boolean(r && typeof r === "object"))
+    .map((r) => ({
+      id: String(r.id ?? ""),
+      name: String(r.name ?? ""),
+      kind: String(r.kind ?? ""),
+      fromDow: Number(r.fromDow ?? 0),
+      toDow: Number(r.toDow ?? 0),
+    }))
+    .filter((r) => r.kind === "DAY_IMPLIES_DAY" || r.kind === "DAY_EXCLUDES_DAY");
+}
+
 export function buildSchedulerProblem(params: {
   scheduleId: string;
   dates: string[];
   timezone: string;
   calendarRules: unknown;
+  scheduleRules?: unknown;
   shiftTypes: Array<{
     id: string;
     name: string;
@@ -177,6 +213,7 @@ export function buildSchedulerProblem(params: {
   members: Array<{
     id: string;
     label?: string | null;
+    role?: string | null;
     isJolly: boolean;
     maxConsecutiveDays: number;
     minRestHoursBetweenShifts: number;
@@ -190,6 +227,88 @@ export function buildSchedulerProblem(params: {
 }): SchedulerProblemPayload {
   const scope = new Set(params.dates);
   const calRules = (params.calendarRules as SchedulerCalendarRules | null) ?? null;
+  const schedRules = (params.scheduleRules as { coPresenceRules?: unknown } | null) ?? null;
+  const calCoRaw =
+    calRules && typeof calRules === "object" ? (calRules as { coPresenceRules?: unknown }).coPresenceRules : null;
+  const schedCoRaw =
+    schedRules && typeof schedRules === "object" ? (schedRules as { coPresenceRules?: unknown }).coPresenceRules : null;
+  const coPresenceRulesRaw: unknown[] = [
+    ...(Array.isArray(calCoRaw) ? calCoRaw : []),
+    ...(Array.isArray(schedCoRaw) ? schedCoRaw : []),
+  ];
+
+  const roleToMemberIds = new Map<string, string[]>();
+  for (const m of params.members) {
+    const role = String(m.role ?? "").trim();
+    if (!role) continue;
+    const key = role.toLowerCase();
+    const list = roleToMemberIds.get(key) ?? [];
+    list.push(m.id);
+    roleToMemberIds.set(key, list);
+  }
+
+  function selectorsToMemberIds(selectors: unknown): string[] {
+    if (!Array.isArray(selectors)) return [];
+    const out = new Set<string>();
+    for (const s of selectors) {
+      const raw = String(s ?? "").trim();
+      if (!raw) continue;
+      if (raw.startsWith("MEMBER:")) {
+        const id = raw.slice("MEMBER:".length).trim();
+        if (id) out.add(id);
+        continue;
+      }
+      if (raw.startsWith("ROLE:")) {
+        const role = raw.slice("ROLE:".length).trim().toLowerCase();
+        const ids = roleToMemberIds.get(role) ?? [];
+        for (const id of ids) out.add(id);
+        continue;
+      }
+    }
+    return [...out];
+  }
+
+  const coPresenceRules =
+    coPresenceRulesRaw.length > 0
+      ? (coPresenceRulesRaw as Array<Record<string, unknown>>).flatMap((r) => {
+        if (!r || typeof r !== "object") return [];
+        const kind = r.kind === "NEVER_WITH" ? "NEVER_WITH" : r.kind === "ALWAYS_WITH" ? "ALWAYS_WITH" : null;
+        if (!kind) return [];
+        const ifSelectors = (r as { ifSelectors?: unknown }).ifSelectors;
+        const thenSelectors = (r as { thenSelectors?: unknown }).thenSelectors;
+        const ifFromSel = selectorsToMemberIds(ifSelectors);
+        const thenFromSel = selectorsToMemberIds(thenSelectors);
+        const ifMemberIds =
+          ifFromSel.length > 0
+            ? ifFromSel
+            : Array.isArray((r as { ifMemberIds?: unknown }).ifMemberIds)
+              ? (r as { ifMemberIds: unknown[] }).ifMemberIds.map(String)
+              : [];
+        const thenMemberIds =
+          thenFromSel.length > 0
+            ? thenFromSel
+            : Array.isArray((r as { thenMemberIds?: unknown }).thenMemberIds)
+              ? (r as { thenMemberIds: unknown[] }).thenMemberIds.map(String)
+              : [];
+        const ifIds = Array.isArray(ifMemberIds) ? ifMemberIds.filter(Boolean) : [];
+        const thenIds = Array.isArray(thenMemberIds) ? thenMemberIds.filter(Boolean) : [];
+        if (!ifIds.length || !thenIds.length) return [];
+        const dates = Array.isArray((r as { dates?: unknown }).dates)
+          ? ((r as { dates: unknown[] }).dates.map(String).filter(Boolean) as string[])
+          : undefined;
+        if (dates && dates.length && !dates.some((d) => scope.has(d))) return [];
+        return [
+          {
+            id: String((r as { id?: unknown }).id || ""),
+            name: String((r as { name?: unknown }).name || ""),
+            kind,
+            ifMemberIds: ifIds,
+            thenMemberIds: thenIds,
+            dates,
+          } satisfies SchedulerCoPresenceRule,
+        ];
+      })
+      : [];
 
   const maxNightsCal = numFromRules(calRules, "max_nights_per_month");
   const maxWeekendsCal = numFromRules(calRules, "max_weekends_per_month");
@@ -212,7 +331,7 @@ export function buildSchedulerProblem(params: {
     let maxNightsMonth: number | null = maxNightsCal;
     let maxSaturdaysMonth: number | null = null;
     let maxSundaysMonth: number | null = null;
-    let maxWeekendDaysMonth: number | null = maxWeekendDaysCal;
+    const maxWeekendDaysMonth: number | null = maxWeekendDaysCal;
     let maxConsecutive = m.maxConsecutiveDays;
 
     for (const c of params.memberConstraints) {
@@ -239,17 +358,25 @@ export function buildSchedulerProblem(params: {
       } else if (c.type === "MAX_CONSECUTIVE_DAYS" && c.weight === "HARD") {
         const n = (c.value as { days?: number }).days;
         if (typeof n === "number" && n > 0) maxConsecutive = n;
-      } else if (c.type === "CUSTOM" && c.weight === "SOFT") {
+      } else if (c.type === "CUSTOM") {
         const note = c.note ?? undefined;
-        const val = c.value as { kind?: string; nights?: number; saturdays?: number; sundays?: number };
-        if (note === "TARGET_NIGHTS_MONTH" && val?.kind === "TARGET_NIGHTS_MONTH" && typeof val.nights === "number") {
-          maxNightsMonth = val.nights;
+        const val = c.value as { kind?: string; shifts?: number; nights?: number; saturdays?: number; sundays?: number };
+        if (
+          (note === "TARGET_SHIFTS_MONTH" || note === "TARGET_SHIFTS_WEEK") &&
+          typeof val.shifts === "number"
+        ) {
+          maxShiftsMonth = val.shifts;
         }
-        if (note === "TARGET_SATURDAYS_MONTH" && val?.kind === "TARGET_SATURDAYS_MONTH" && typeof val.saturdays === "number") {
-          maxSaturdaysMonth = val.saturdays;
-        }
-        if (note === "TARGET_SUNDAYS_MONTH" && val?.kind === "TARGET_SUNDAYS_MONTH" && typeof val.sundays === "number") {
-          maxSundaysMonth = val.sundays;
+        if (c.weight === "SOFT") {
+          if (note === "TARGET_NIGHTS_MONTH" && val?.kind === "TARGET_NIGHTS_MONTH" && typeof val.nights === "number") {
+            maxNightsMonth = val.nights;
+          }
+          if (note === "TARGET_SATURDAYS_MONTH" && val?.kind === "TARGET_SATURDAYS_MONTH" && typeof val.saturdays === "number") {
+            maxSaturdaysMonth = val.saturdays;
+          }
+          if (note === "TARGET_SUNDAYS_MONTH" && val?.kind === "TARGET_SUNDAYS_MONTH" && typeof val.sundays === "number") {
+            maxSundaysMonth = val.sundays;
+          }
         }
       }
 
@@ -280,6 +407,7 @@ export function buildSchedulerProblem(params: {
     return {
       id: m.id,
       ...(m.label != null && String(m.label).trim() !== "" ? { label: String(m.label).trim() } : {}),
+      ...(m.role != null && String(m.role).trim() !== "" ? { role: String(m.role).trim() } : {}),
       isJolly: m.isJolly,
       maxConsecutiveDays: maxConsecutive,
       unavailableDates: [...unavailableDates].sort(),
@@ -304,7 +432,9 @@ export function buildSchedulerProblem(params: {
     dates: params.dates,
     timezone: params.timezone,
     restAfterNight: restAfterNightEnabled(calRules),
+    restDaysAfterNight: restDaysAfterNight(calRules),
     calendarRules: calRules,
+    ...(extractDowRules(calRules).length ? { dowRules: extractDowRules(calRules) } : {}),
     shiftTypes: params.shiftTypes.map((st) => ({
       id: st.id,
       name: st.name,
@@ -320,6 +450,7 @@ export function buildSchedulerProblem(params: {
     })),
     members: membersOut,
     fixedAssignments: params.fixedAssignments,
+    ...(coPresenceRules.length ? { coPresenceRules } : {}),
     ...(params.randomSeed !== undefined ? { randomSeed: params.randomSeed } : {}),
   };
 }

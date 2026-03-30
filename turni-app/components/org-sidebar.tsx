@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 type Props = {
   orgSlug: string;
@@ -14,12 +14,7 @@ type Props = {
 export function OrgSidebar({ orgSlug, orgName, isWorkerOnly = false }: Props) {
   const pathname = usePathname();
   const storageKey = "turny.sidebar.collapsed";
-  const [collapsed, setCollapsed] = useState(false);
-
-  useEffect(() => {
-    const saved = window.localStorage.getItem(storageKey);
-    setCollapsed(saved === "1");
-  }, []);
+  const [collapsed, setCollapsed] = useState(() => typeof window !== "undefined" && window.localStorage.getItem(storageKey) === "1");
 
   function toggleSidebar() {
     setCollapsed((prev) => {
@@ -50,7 +45,7 @@ export function OrgSidebar({ orgSlug, orgName, isWorkerOnly = false }: Props) {
             className={`sidebar-link ${pathname === "/" ? "active" : ""}`}
             title="Home"
           >
-            <Image src="/icon-dashboard.svg" alt="" width={24} height={24} />
+            <Image src="/dashboard.svg" alt="" width={24} height={24} />
             {!collapsed ? <span>Home</span> : null}
           </Link>
 
@@ -60,7 +55,7 @@ export function OrgSidebar({ orgSlug, orgName, isWorkerOnly = false }: Props) {
               className={`sidebar-link mt-2 ${pathname === `/${orgSlug}` ? "active" : ""}`}
               title="Calendari"
             >
-              <Image src="/icon-calendar.svg" alt="" width={24} height={24} />
+              <Image src="/calendar.svg" alt="" width={24} height={24} />
               {!collapsed ? <span>Calendari</span> : null}
             </Link>
           ) : null}
@@ -79,7 +74,7 @@ export function OrgSidebar({ orgSlug, orgName, isWorkerOnly = false }: Props) {
                 className={`sidebar-link mt-2 ${pathname === `/${orgSlug}/members` ? "active" : ""}`}
                 title="Membri"
               >
-                <Image src="/icon-members.svg" alt="" width={24} height={24} />
+                <Image src="/person.svg" alt="" width={24} height={24} />
                 {!collapsed ? <span>Membri</span> : null}
               </Link>
               <Link
@@ -87,7 +82,7 @@ export function OrgSidebar({ orgSlug, orgName, isWorkerOnly = false }: Props) {
                 className={`sidebar-link mt-2 ${pathname === `/${orgSlug}/settings` ? "active" : ""}`}
                 title="Settings"
               >
-                <Image src="/icon-settings.svg" alt="" width={24} height={24} />
+                <Image src="/setting.svg" alt="" width={24} height={24} />
                 {!collapsed ? <span>Settings</span> : null}
               </Link>
             </>

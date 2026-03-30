@@ -10,6 +10,7 @@ import { fetchOrgMemberDisplayColors } from "@/lib/org-member-display-colors";
 import { prisma } from "@/lib/prisma";
 import { resolveMemberRowColor } from "@/lib/member-row-color";
 import { buildScheduleReport } from "@/lib/schedule-report";
+import { shiftIsNight } from "@/lib/scheduler-problem";
 
 type Props = {
   params: Promise<{ orgSlug: string; calId: string; schedId: string }>;
@@ -55,7 +56,7 @@ export default async function ScheduleGridPage({ params, searchParams }: Props) 
           where: {
             OR: [
               { type: { in: ["UNAVAILABLE_WEEKDAY", "MAX_SHIFTS_WEEK", "UNAVAILABLE_SHIFT"] } },
-              { type: "CUSTOM", note: "MEMBER_COLOR" },
+              { type: "CUSTOM", note: { in: ["MEMBER_COLOR", "TARGET_SHIFTS_MONTH", "TARGET_NIGHTS_MONTH", "TARGET_SATURDAYS_MONTH", "TARGET_SUNDAYS_MONTH"] } },
             ],
           },
           select: { type: true, value: true, note: true },
@@ -109,6 +110,7 @@ export default async function ScheduleGridPage({ params, searchParams }: Props) 
       maxStaff: st.maxStaff,
       durationHours: st.durationHours,
       activeWeekdays: st.activeWeekdays,
+      isNight: shiftIsNight(st),
     })),
     assignments: assignments.map((a) => ({
       memberId: a.memberId,
@@ -158,6 +160,7 @@ export default async function ScheduleGridPage({ params, searchParams }: Props) 
         startDate={periodMeta.startDate}
         endDate={periodMeta.endDate}
         canEdit={canEdit}
+        scheduleRules={(schedule.rules ?? null) as unknown}
         shiftTypes={shiftTypes.map((st) => ({
           id: st.id,
           name: st.name,
@@ -178,12 +181,32 @@ export default async function ScheduleGridPage({ params, searchParams }: Props) 
             orgDefaultColor: orgRow?.defaultDisplayColor ?? null,
             orgUseDefaultInCalendars: orgRow?.useDisplayColorInCalendars ?? true,
           });
+          const cfgShifts = m.constraints.find((c) => c.type === "CUSTOM" && c.note === "TARGET_SHIFTS_MONTH");
+          const cfgNights = m.constraints.find((c) => c.type === "CUSTOM" && c.note === "TARGET_NIGHTS_MONTH");
+          const cfgSats = m.constraints.find((c) => c.type === "CUSTOM" && c.note === "TARGET_SATURDAYS_MONTH");
+          const cfgSuns = m.constraints.find((c) => c.type === "CUSTOM" && c.note === "TARGET_SUNDAYS_MONTH");
           return {
             id: m.id,
             userId: m.userId,
             label: `${`${m.user.firstName} ${m.user.lastName}`.trim() || m.user.email}`,
+            professionalRole: m.user.professionalRole || "",
             contractShiftsWeek: m.contractShiftsWeek ?? null,
-            contractShiftsMonth: m.contractShiftsMonth ?? null,
+            contractShiftsMonth:
+              typeof (cfgShifts?.value as { shifts?: number } | undefined)?.shifts === "number"
+                ? (cfgShifts!.value as { shifts: number }).shifts
+                : (m.contractShiftsMonth ?? null),
+            configMaxNights:
+              typeof (cfgNights?.value as { nights?: number } | undefined)?.nights === "number"
+                ? (cfgNights!.value as { nights: number }).nights
+                : null,
+            configMaxSaturdays:
+              typeof (cfgSats?.value as { saturdays?: number } | undefined)?.saturdays === "number"
+                ? (cfgSats!.value as { saturdays: number }).saturdays
+                : null,
+            configMaxSundays:
+              typeof (cfgSuns?.value as { sundays?: number } | undefined)?.sundays === "number"
+                ? (cfgSuns!.value as { sundays: number }).sundays
+                : null,
             baseUnavailableWeekdays: m.constraints
               .filter((c) => c.type === "UNAVAILABLE_WEEKDAY")
               .map((c) => Number((c.value as { weekday?: number }).weekday))

@@ -42,14 +42,14 @@ export default async function OrgMembersPage({ params }: Props) {
       id: true,
       userId: true,
       calendarId: true,
-      contractShiftsWeek: true,
+      contractShiftsMonth: true,
       contractHoursMonth: true,
       constraints: {
         where: {
           OR: [
             { type: "UNAVAILABLE_SHIFT", weight: "SOFT" },
             { type: "UNAVAILABLE_WEEKDAY", weight: "SOFT" },
-            { type: "CUSTOM", note: "TARGET_SHIFTS_WEEK" },
+            { type: "CUSTOM", note: "TARGET_SHIFTS_MONTH" },
             { type: "CUSTOM", note: "TARGET_HOURS_MONTH" },
             { type: "CUSTOM", note: "TARGET_NIGHTS_MONTH" },
             { type: "CUSTOM", note: "TARGET_SATURDAYS_MONTH" },
@@ -74,7 +74,7 @@ export default async function OrgMembersPage({ params }: Props) {
     calendarMemberId: string;
     shiftTypes: { id: string; name: string }[];
     initialAvoidShiftTypeIds: string[];
-    initialTargetShiftsWeek: number | null;
+    initialTargetShiftsMonth: number | null;
     initialTargetHoursMonth: number | null;
     initialTargetNightsMonth: number | null;
     initialTargetSaturdaysMonth: number | null;
@@ -86,7 +86,7 @@ export default async function OrgMembersPage({ params }: Props) {
       .filter((c) => c.type === "UNAVAILABLE_SHIFT")
       .map((c) => String((c.value as { shiftTypeId?: string } | undefined)?.shiftTypeId ?? ""))
       .filter(Boolean);
-    const targetShifts = item.constraints.find((c) => c.type === "CUSTOM" && c.note === "TARGET_SHIFTS_WEEK");
+    const targetShifts = item.constraints.find((c) => c.type === "CUSTOM" && c.note === "TARGET_SHIFTS_MONTH");
     const targetHours = item.constraints.find((c) => c.type === "CUSTOM" && c.note === "TARGET_HOURS_MONTH");
     const targetNights = item.constraints.find((c) => c.type === "CUSTOM" && c.note === "TARGET_NIGHTS_MONTH");
     const targetSaturdays = item.constraints.find((c) => c.type === "CUSTOM" && c.note === "TARGET_SATURDAYS_MONTH");
@@ -114,7 +114,7 @@ export default async function OrgMembersPage({ params }: Props) {
       calendarMemberId: item.id,
       shiftTypes: item.calendar.shiftTypes,
       initialAvoidShiftTypeIds: [...new Set(avoidShiftTypeIds)],
-      initialTargetShiftsWeek: targetShiftsFromConstraint ?? item.contractShiftsWeek ?? null,
+      initialTargetShiftsMonth: targetShiftsFromConstraint ?? item.contractShiftsMonth ?? null,
       initialTargetHoursMonth: targetHoursFromConstraint ?? hoursFromColumn ?? null,
       initialTargetNightsMonth:
         typeof (targetNights?.value as { nights?: unknown } | undefined)?.nights === "number"

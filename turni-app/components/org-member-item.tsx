@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useBeforeUnloadWhen } from "@/hooks/use-unsaved-prompt";
 import { ColorPalettePicker } from "@/components/color-palette-picker";
 import { ConfirmModal } from "@/components/confirm-modal";
@@ -30,7 +30,7 @@ type Props = {
     calendarMemberId: string;
     shiftTypes: { id: string; name: string }[];
     initialAvoidShiftTypeIds: string[];
-    initialTargetShiftsWeek: number | null;
+    initialTargetShiftsMonth: number | null;
     initialTargetHoursMonth: number | null;
     initialTargetNightsMonth: number | null;
     initialTargetSaturdaysMonth: number | null;
@@ -61,7 +61,7 @@ export function OrgMemberItem({
   const [openWeekdayPickerFor, setOpenWeekdayPickerFor] = useState<string | null>(null);
   const [calendarPrefs, setCalendarPrefs] = useState<Record<string, {
     avoidShiftTypeIds: string[];
-    targetShiftsWeek: string;
+    targetShiftsMonth: string;
     targetHoursMonth: string;
     targetNightsMonth: string;
     targetSaturdaysMonth: string;
@@ -73,7 +73,7 @@ export function OrgMemberItem({
         cal.calendarMemberId,
         {
           avoidShiftTypeIds: cal.initialAvoidShiftTypeIds || [],
-          targetShiftsWeek: cal.initialTargetShiftsWeek === null ? "" : String(cal.initialTargetShiftsWeek),
+          targetShiftsMonth: cal.initialTargetShiftsMonth === null ? "" : String(cal.initialTargetShiftsMonth),
           targetHoursMonth: cal.initialTargetHoursMonth === null ? "" : String(cal.initialTargetHoursMonth),
           targetNightsMonth: cal.initialTargetNightsMonth === null ? "" : String(cal.initialTargetNightsMonth),
           targetSaturdaysMonth: cal.initialTargetSaturdaysMonth === null ? "" : String(cal.initialTargetSaturdaysMonth),
@@ -90,7 +90,7 @@ export function OrgMemberItem({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [discardEditOpen, setDiscardEditOpen] = useState(false);
-  const editSnapshotRef = useRef<string>("");
+  const [editSnapshot, setEditSnapshot] = useState<string>("");
   const isSelf = member.userId === myUserId;
   const roleLabel: Record<string, string> = {
     ADMIN: "RESPONSABILE",
@@ -98,7 +98,7 @@ export function OrgMemberItem({
     WORKER: "WORKER",
   };
 
-  function captureEditState(): string {
+  const captureEditState = useCallback((): string => {
     const prefKeys = Object.keys(calendarPrefs).sort();
     const prefs = prefKeys.map((k) => [k, calendarPrefs[k]]);
     return JSON.stringify({
@@ -112,23 +112,12 @@ export function OrgMemberItem({
       rowColor,
       prefs,
     });
-  }
+  }, [calendarPrefs, email, firstName, lastName, password, professionalRole, roles, rowColor, username]);
 
   const editFormDirty = useMemo(() => {
     if (!editOpen) return false;
-    return captureEditState() !== editSnapshotRef.current;
-  }, [
-    editOpen,
-    firstName,
-    lastName,
-    username,
-    email,
-    professionalRole,
-    password,
-    roles,
-    rowColor,
-    calendarPrefs,
-  ]);
+    return captureEditState() !== editSnapshot;
+  }, [captureEditState, editOpen, editSnapshot]);
 
   useBeforeUnloadWhen(editFormDirty && canEditRole);
 
@@ -156,7 +145,7 @@ export function OrgMemberItem({
         cal.calendarMemberId,
         {
           avoidShiftTypeIds: cal.initialAvoidShiftTypeIds || [],
-          targetShiftsWeek: cal.initialTargetShiftsWeek === null ? "" : String(cal.initialTargetShiftsWeek),
+          targetShiftsMonth: cal.initialTargetShiftsMonth === null ? "" : String(cal.initialTargetShiftsMonth),
           targetHoursMonth: cal.initialTargetHoursMonth === null ? "" : String(cal.initialTargetHoursMonth),
           targetNightsMonth: cal.initialTargetNightsMonth === null ? "" : String(cal.initialTargetNightsMonth),
           targetSaturdaysMonth: cal.initialTargetSaturdaysMonth === null ? "" : String(cal.initialTargetSaturdaysMonth),
@@ -167,7 +156,8 @@ export function OrgMemberItem({
     );
     const prefKeys = Object.keys(prefsN).sort();
     const prefsSnap = prefKeys.map((k) => [k, prefsN[k]]);
-    editSnapshotRef.current = JSON.stringify({
+    setEditSnapshot(
+      JSON.stringify({
       firstName: firstN,
       lastName: lastN,
       username: userN,
@@ -177,7 +167,8 @@ export function OrgMemberItem({
       roles: [...rolesN].sort(),
       rowColor: rowN,
       prefs: prefsSnap,
-    });
+      }),
+    );
     setFirstName(firstN);
     setLastName(lastN);
     setUsername(userN);
@@ -220,10 +211,10 @@ export function OrgMemberItem({
         calendarPreferences: assignedCalendars.map((cal) => ({
           calendarMemberId: cal.calendarMemberId,
           avoidShiftTypeIds: calendarPrefs[cal.calendarMemberId]?.avoidShiftTypeIds || [],
-          targetShiftsWeek:
-            calendarPrefs[cal.calendarMemberId]?.targetShiftsWeek === ""
+          targetShiftsMonth:
+            calendarPrefs[cal.calendarMemberId]?.targetShiftsMonth === ""
               ? null
-              : Number(calendarPrefs[cal.calendarMemberId]?.targetShiftsWeek),
+              : Number(calendarPrefs[cal.calendarMemberId]?.targetShiftsMonth),
           targetHoursMonth:
             calendarPrefs[cal.calendarMemberId]?.targetHoursMonth === ""
               ? null
@@ -266,7 +257,7 @@ export function OrgMemberItem({
 
   function updateCalendarPref(calendarMemberId: string, patch: Partial<{
     avoidShiftTypeIds: string[];
-    targetShiftsWeek: string;
+    targetShiftsMonth: string;
     targetHoursMonth: string;
     targetNightsMonth: string;
     targetSaturdaysMonth: string;
@@ -277,7 +268,7 @@ export function OrgMemberItem({
       ...prev,
       [calendarMemberId]: {
         avoidShiftTypeIds: prev[calendarMemberId]?.avoidShiftTypeIds ?? [],
-        targetShiftsWeek: prev[calendarMemberId]?.targetShiftsWeek ?? "",
+        targetShiftsMonth: prev[calendarMemberId]?.targetShiftsMonth ?? "",
         targetHoursMonth: prev[calendarMemberId]?.targetHoursMonth ?? "",
         targetNightsMonth: prev[calendarMemberId]?.targetNightsMonth ?? "",
         targetSaturdaysMonth: prev[calendarMemberId]?.targetSaturdaysMonth ?? "",
@@ -412,7 +403,7 @@ export function OrgMemberItem({
                   {assignedCalendars.map((cal) => {
                     const pref = calendarPrefs[cal.calendarMemberId] ?? {
                       avoidShiftTypeIds: [],
-                      targetShiftsWeek: "",
+                      targetShiftsMonth: "",
                       targetHoursMonth: "",
                       targetNightsMonth: "",
                       targetSaturdaysMonth: "",
@@ -498,15 +489,15 @@ export function OrgMemberItem({
                             </div>
                           </div>
                           <div className="col-md-3">
-                            <label className="form-label small mb-1">Turni</label>
+                            <label className="form-label small mb-1">Max turni (nel periodo)</label>
                             <input
                               type="number"
                               min={0}
-                              max={21}
+                              max={200}
                               className="form-control form-control-sm input-underlined"
                               style={{ maxWidth: 110 }}
-                              value={pref.targetShiftsWeek}
-                              onChange={(e) => updateCalendarPref(cal.calendarMemberId, { targetShiftsWeek: e.target.value })}
+                              value={pref.targetShiftsMonth}
+                              onChange={(e) => updateCalendarPref(cal.calendarMemberId, { targetShiftsMonth: e.target.value })}
                               disabled={!canEditRole || loading}
                             />
                           </div>

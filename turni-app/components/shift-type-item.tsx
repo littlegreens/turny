@@ -132,7 +132,7 @@ export function ShiftTypeItem({ shiftType, canEdit }: Props) {
                     <div className="col-12 col-md-6 position-relative">
                       <label className="form-label small mb-1 d-block">Giorni attivi</label>
                       <button className="btn btn-sm btn-outline-success" type="button" onClick={() => setWeekdaysOpen((v) => !v)}>
-                        <Image src="/icon-calendar.svg" alt="Giorni turno" width={16} height={16} />
+                        <Image src="/calendar.svg" alt="Giorni turno" width={16} height={16} />
                       </button>
                       {weekdaysOpen ? (
                         <div className="weekdays-popover-dark">

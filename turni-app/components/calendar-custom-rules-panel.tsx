@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useBeforeUnloadWhen } from "@/hooks/use-unsaved-prompt";
 
 function customRulesToText(json: unknown): string {
@@ -41,12 +41,6 @@ export function CalendarCustomRulesPanel({ calId, initialCustomRules, canEdit }:
   const [rulesText, setRulesText] = useState(() => customRulesToText(initialCustomRules));
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-
-  const initialCustomRulesKey = useMemo(() => JSON.stringify(initialCustomRules ?? null), [initialCustomRules]);
-
-  useEffect(() => {
-    setRulesText(customRulesToText(initialCustomRules));
-  }, [initialCustomRulesKey]);
 
   const dirty = useMemo(() => {
     if (!canEdit || loading) return false;

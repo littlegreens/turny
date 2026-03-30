@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { ColorPalettePicker } from "@/components/color-palette-picker";
 import { useBeforeUnloadWhen } from "@/hooks/use-unsaved-prompt";
 
@@ -72,7 +72,7 @@ export function WorkerTurnsView({
 }: Props) {
   const router = useRouter();
   const [viewMode, setViewMode] = useState<"standard" | "calendar" | "mine">("mine");
-  const [myColorDraft, setMyColorDraft] = useState("#3B8BD4");
+  const [myColorDraft, setMyColorDraft] = useState<string | null>(null);
   const [colorSaving, setColorSaving] = useState(false);
   const [colorMsg, setColorMsg] = useState<string | null>(null);
 
@@ -122,15 +122,10 @@ export function WorkerTurnsView({
     [currentUserId, members],
   );
 
-  useEffect(() => {
-    const c = myMember?.memberColor;
-    if (c && /^#[0-9A-Fa-f]{6}$/.test(c)) setMyColorDraft(c);
-    else setMyColorDraft("#3B8BD4");
-  }, [myMember?.memberColor, myMember?.id]);
-
   const savedColorForCompare =
     myMember?.memberColor && /^#[0-9A-Fa-f]{6}$/.test(myMember.memberColor) ? myMember.memberColor : "#3B8BD4";
-  const colorDraftDirty = Boolean(myMember) && myColorDraft !== savedColorForCompare;
+  const effectiveColor = myColorDraft ?? savedColorForCompare;
+  const colorDraftDirty = Boolean(myMember) && myColorDraft !== null && myColorDraft !== savedColorForCompare;
   useBeforeUnloadWhen(colorDraftDirty);
 
   const myAssignments = useMemo(() => {
@@ -164,7 +159,7 @@ export function WorkerTurnsView({
             className={`btn btn-sm ${viewMode === "standard" ? "btn-success" : "btn-outline-success"}`}
             onClick={() => setViewMode("standard")}
           >
-            <Image src="/badge.svg" alt="" width={20} height={20} style={{ marginRight: 8, filter: viewMode === "standard" ? "brightness(0) invert(1)" : "none" }} />
+            <Image src="/dashboard.svg" alt="" width={20} height={20} style={{ marginRight: 8, filter: viewMode === "standard" ? "brightness(0) invert(1)" : "none" }} />
             Standard
           </button>
           <button
@@ -172,7 +167,7 @@ export function WorkerTurnsView({
             className={`btn btn-sm ${viewMode === "calendar" ? "btn-success" : "btn-outline-success"}`}
             onClick={() => setViewMode("calendar")}
           >
-            <Image src="/icon-calendar.svg" alt="" width={20} height={20} style={{ marginRight: 8, filter: viewMode === "calendar" ? "brightness(0) invert(1)" : "none" }} />
+            <Image src="/calendar.svg" alt="" width={20} height={20} style={{ marginRight: 8, filter: viewMode === "calendar" ? "brightness(0) invert(1)" : "none" }} />
             Calendario
           </button>
           <button
@@ -180,7 +175,7 @@ export function WorkerTurnsView({
             className={`btn btn-sm ${viewMode === "mine" ? "btn-success" : "btn-outline-success"}`}
             onClick={() => setViewMode("mine")}
           >
-            <Image src="/badge.svg" alt="" width={20} height={20} style={{ marginRight: 8, filter: viewMode === "mine" ? "brightness(0) invert(1)" : "none" }} />
+            <Image src="/my_turni.svg" alt="" width={20} height={20} style={{ marginRight: 8, filter: viewMode === "mine" ? "brightness(0) invert(1)" : "none" }} />
             I miei turni
           </button>
         </div>
@@ -286,12 +281,12 @@ export function WorkerTurnsView({
                     Di base il colore è quello impostato sulla scheda membro dall&apos;organizzazione. Qui puoi definire un colore
                     solo per questo calendario (sovrascrive il default nei turni di questa squadra).
                   </p>
-                  <ColorPalettePicker value={myColorDraft} onChange={setMyColorDraft} disabled={colorSaving} label="Colore persona" />
+                  <ColorPalettePicker value={effectiveColor} onChange={(hex) => setMyColorDraft(hex)} disabled={colorSaving} label="Colore persona" />
                   <div className="d-flex flex-wrap align-items-center gap-2 mt-2">
                     <button
                       type="button"
                       className="btn btn-sm btn-success"
-                      disabled={colorSaving || !/^#[0-9A-Fa-f]{6}$/.test(myColorDraft)}
+                      disabled={colorSaving || !/^#[0-9A-Fa-f]{6}$/.test(effectiveColor) || !colorDraftDirty}
                       onClick={() => {
                         void (async () => {
                           setColorSaving(true);
@@ -299,7 +294,7 @@ export function WorkerTurnsView({
                           const res = await fetch(`/api/calendar-members/${myMember.id}`, {
                             method: "PATCH",
                             headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ color: myColorDraft }),
+                            body: JSON.stringify({ color: effectiveColor }),
                           });
                           setColorSaving(false);
                           if (!res.ok) {
@@ -307,6 +302,7 @@ export function WorkerTurnsView({
                             return;
                           }
                           setColorMsg("Colore aggiornato.");
+                          setMyColorDraft(null);
                           router.refresh();
                         })();
                       }}

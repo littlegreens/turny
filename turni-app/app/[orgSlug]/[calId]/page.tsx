@@ -4,7 +4,7 @@ import { getServerSession } from "next-auth";
 import { AppBreadcrumbs } from "@/components/app-breadcrumbs";
 import { CalendarMembersPanel } from "@/components/calendar-members-panel";
 import { CalendarShiftTypesPanel } from "@/components/calendar-shift-types-panel";
-import { CalendarCustomRulesPanel } from "@/components/calendar-custom-rules-panel";
+import { CalendarCoRulesPanelV2 } from "@/components/calendar-co-rules-panel-v2";
 import { authOptions } from "@/lib/auth";
 import { hasAnyRole, normalizeRoles } from "@/lib/org-roles";
 import { prisma } from "@/lib/prisma";
@@ -115,7 +115,17 @@ export default async function CalendarDetailPage({ params }: Props) {
         </div>
       </section>
 
-      <CalendarCustomRulesPanel calId={calendar.id} initialCustomRules={calendar.customRules} canEdit={canEdit} />
+      <CalendarCoRulesPanelV2
+        calId={calendar.id}
+        canEdit={canEdit}
+        initialCalendarRules={calendar.rules}
+        members={calendarMembers.map((m) => ({
+          id: m.id,
+          label: `${`${m.user.firstName} ${m.user.lastName}`.trim() || m.user.email}`,
+          professionalRole: m.user.professionalRole || "",
+          memberColor: null,
+        }))}
+      />
 
       <div className="mt-4">
         <Link href={`/${orgSlug}`} className="link-dark">

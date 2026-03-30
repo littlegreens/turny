@@ -20,7 +20,7 @@ const updateRoleSchema = z.object({
       z.object({
         calendarMemberId: z.string().min(1),
         avoidShiftTypeIds: z.array(z.string().min(1)).default([]),
-        targetShiftsWeek: z.number().int().min(0).max(21).nullable().optional(),
+        targetShiftsMonth: z.number().int().min(0).max(200).nullable().optional(),
         targetHoursMonth: z.number().int().min(0).max(400).nullable().optional(),
         targetNightsMonth: z.number().int().min(0).max(31).nullable().optional(),
         targetSaturdaysMonth: z.number().int().min(0).max(8).nullable().optional(),
@@ -134,7 +134,8 @@ export async function PATCH(request: Request, { params }: Params) {
             OR: [
               { type: "UNAVAILABLE_SHIFT", weight: "SOFT" },
               { type: "UNAVAILABLE_WEEKDAY", weight: "SOFT" },
-              { type: "CUSTOM", weight: "SOFT", note: "TARGET_SHIFTS_WEEK" },
+              { type: "CUSTOM", note: "TARGET_SHIFTS_WEEK" },
+              { type: "CUSTOM", note: "TARGET_SHIFTS_MONTH" },
               { type: "CUSTOM", weight: "SOFT", note: "TARGET_HOURS_MONTH" },
               { type: "CUSTOM", weight: "SOFT", note: "TARGET_NIGHTS_MONTH" },
               { type: "CUSTOM", weight: "SOFT", note: "TARGET_SATURDAYS_MONTH" },
@@ -169,14 +170,14 @@ export async function PATCH(request: Request, { params }: Params) {
           });
         }
 
-        if (typeof pref.targetShiftsWeek === "number") {
+        if (typeof pref.targetShiftsMonth === "number") {
           await tx.constraint.create({
             data: {
               memberId: pref.calendarMemberId,
               type: "CUSTOM",
-              weight: "SOFT",
-              value: { kind: "TARGET_SHIFTS_WEEK", shifts: pref.targetShiftsWeek },
-              note: "TARGET_SHIFTS_WEEK",
+              weight: "HARD",
+              value: { kind: "TARGET_SHIFTS_MONTH", shifts: pref.targetShiftsMonth },
+              note: "TARGET_SHIFTS_MONTH",
               createdBy: session.user.id,
             },
           });
@@ -235,7 +236,7 @@ export async function PATCH(request: Request, { params }: Params) {
         await tx.calendarMember.update({
           where: { id: pref.calendarMemberId },
           data: {
-            contractShiftsWeek: typeof pref.targetShiftsWeek === "number" ? pref.targetShiftsWeek : null,
+            contractShiftsMonth: typeof pref.targetShiftsMonth === "number" ? pref.targetShiftsMonth : null,
             contractHoursMonth: typeof pref.targetHoursMonth === "number" ? pref.targetHoursMonth : null,
           },
         });

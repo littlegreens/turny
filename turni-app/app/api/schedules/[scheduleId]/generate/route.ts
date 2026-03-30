@@ -43,6 +43,8 @@ export async function POST(_: Request, { params }: Params) {
   ] as const;
 
   const customSchedulerNotes = [
+    "TARGET_SHIFTS_MONTH",
+    "TARGET_SHIFTS_WEEK",
     "TARGET_NIGHTS_MONTH",
     "TARGET_SATURDAYS_MONTH",
     "TARGET_SUNDAYS_MONTH",
@@ -76,7 +78,7 @@ export async function POST(_: Request, { params }: Params) {
         maxConsecutiveDays: true,
         minRestHoursBetweenShifts: true,
         contractShiftsMonth: true,
-        user: { select: { firstName: true, lastName: true, email: true } },
+        user: { select: { firstName: true, lastName: true, email: true, professionalRole: true } },
       },
     }),
     prisma.shiftAssignment.findMany({
@@ -119,10 +121,12 @@ export async function POST(_: Request, { params }: Params) {
     dates,
     timezone: calendar.timezone,
     calendarRules: calendar.rules,
+    scheduleRules: access.schedule.rules,
     shiftTypes,
     members: members.map((m) => ({
       id: m.id,
       label: `${`${m.user.firstName} ${m.user.lastName}`.trim() || m.user.email}`,
+      role: m.user.professionalRole || "",
       isJolly: m.isJolly,
       maxConsecutiveDays: m.maxConsecutiveDays,
       minRestHoursBetweenShifts: m.minRestHoursBetweenShifts,
