@@ -9,9 +9,10 @@ type Props = {
   orgSlug: string;
   orgName: string;
   isWorkerOnly?: boolean;
+  isSuperAdmin?: boolean;
 };
 
-export function OrgSidebar({ orgSlug, orgName, isWorkerOnly = false }: Props) {
+export function OrgSidebar({ orgSlug, orgName, isWorkerOnly = false, isSuperAdmin = false }: Props) {
   const pathname = usePathname();
   const storageKey = "turny.sidebar.collapsed";
   const [collapsed, setCollapsed] = useState(() => typeof window !== "undefined" && window.localStorage.getItem(storageKey) === "1");
@@ -45,19 +46,29 @@ export function OrgSidebar({ orgSlug, orgName, isWorkerOnly = false }: Props) {
             className={`sidebar-link ${pathname === "/" ? "active" : ""}`}
             title="Home"
           >
-            <Image src="/dashboard.svg" alt="" width={24} height={24} />
+            <Image src="/home.svg" alt="" width={24} height={24} />
             {!collapsed ? <span>Home</span> : null}
           </Link>
 
           {!isWorkerOnly ? (
-            <Link
-              href={`/${orgSlug}`}
-              className={`sidebar-link mt-2 ${pathname === `/${orgSlug}` ? "active" : ""}`}
-              title="Calendari"
-            >
-              <Image src="/calendar.svg" alt="" width={24} height={24} />
-              {!collapsed ? <span>Calendari</span> : null}
-            </Link>
+            <>
+              <Link
+                href={`/${orgSlug}`}
+                className={`sidebar-link mt-2 ${pathname === `/${orgSlug}` ? "active" : ""}`}
+                title="Dashboard"
+              >
+                <Image src="/dashboard.svg" alt="" width={24} height={24} />
+                {!collapsed ? <span>Dashboard</span> : null}
+              </Link>
+              <Link
+                href={`/${orgSlug}/calendari`}
+                className={`sidebar-link mt-2 ${pathname === `/${orgSlug}/calendari` ? "active" : ""}`}
+                title="Calendari"
+              >
+                <Image src="/calendar.svg" alt="" width={24} height={24} />
+                {!collapsed ? <span>Calendari</span> : null}
+              </Link>
+            </>
           ) : null}
           <Link
             href={`/${orgSlug}/turni`}
@@ -85,6 +96,16 @@ export function OrgSidebar({ orgSlug, orgName, isWorkerOnly = false }: Props) {
                 <Image src="/setting.svg" alt="" width={24} height={24} />
                 {!collapsed ? <span>Settings</span> : null}
               </Link>
+              {isSuperAdmin ? (
+                <Link
+                  href="/admin"
+                  className={`sidebar-link mt-2 ${pathname === "/admin" || pathname.startsWith("/admin/") ? "active" : ""}`}
+                  title="Admin"
+                >
+                  <Image src="/dashboard.svg" alt="" width={24} height={24} />
+                  {!collapsed ? <span>Admin</span> : null}
+                </Link>
+              ) : null}
             </>
           ) : null}
         </nav>

@@ -15,6 +15,7 @@ const updateRoleSchema = z.object({
   email: z.string().email("Email non valida"),
   password: z.string().min(8, "Password minima 8 caratteri").optional().or(z.literal("")),
   roles: z.array(z.enum(["OWNER", "ADMIN", "MANAGER", "WORKER"])).min(1, "Seleziona almeno un ruolo"),
+  managedCalendarIds: z.array(z.string().min(1)).default([]),
   calendarPreferences: z
     .array(
       z.object({
@@ -112,6 +113,28 @@ export async function PATCH(request: Request, { params }: Params) {
         user: { select: { id: true, email: true, name: true, firstName: true, lastName: true, professionalRole: true } },
       },
     });
+
+    // Assegnazione calendari da schermata membri (accesso manager).
+    // Usa la stessa tabella calendar_membership: un manager "puro" vede/modifica
+    // solo calendari dove e presente come calendarMember.
+    if (roles.includes("MANAGER")) {
+      const managedIds = [...new Set(parsed.data.managedCalendarIds)];
+      if (managedIds.length > 0) {
+        const validCalendars = await tx.calendar.findMany({
+          where: { orgId: target.orgId, id: { in: managedIds } },
+          select: { id: true },
+        });
+        const validSet = new Set(validCalendars.map((c) => c.id));
+        for (const calendarId of managedIds) {
+          if (!validSet.has(calendarId)) continue;
+          await tx.calendarMember.upsert({
+            where: { calendarId_userId: { calendarId, userId: target.userId } },
+            create: { calendarId, userId: target.userId },
+            update: {},
+          });
+        }
+      }
+    }
 
     const calendarMemberIds = parsed.data.calendarPreferences.map((p) => p.calendarMemberId);
     if (calendarMemberIds.length > 0) {

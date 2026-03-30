@@ -4,6 +4,7 @@ import { getServerSession } from "next-auth";
 import { ContactLeadForm } from "@/components/contact-lead-form";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { isSuperAdminEmail } from "@/lib/super-admin";
 
 export default async function Home() {
   const session = await getServerSession(authOptions);
@@ -15,7 +16,13 @@ export default async function Home() {
       })
     : null;
 
-  const ctaHref = session?.user ? (membership ? `/${membership.org.slug}` : "/dashboard") : "/login";
+  const ctaHref = session?.user
+    ? isSuperAdminEmail(session.user.email ?? null)
+      ? "/admin"
+      : membership
+        ? `/${membership.org.slug}`
+        : "/dashboard"
+    : "/login";
   const ctaLabel = session?.user ? "Entra" : "Login";
 
   return (

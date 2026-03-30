@@ -8,6 +8,7 @@ import { hasAnyRole, normalizeRoles } from "@/lib/org-roles";
 import { fetchOrgMemberDisplayColors } from "@/lib/org-member-display-colors";
 import { prisma } from "@/lib/prisma";
 import { resolveMemberRowColor } from "@/lib/member-row-color";
+import { isSuperAdminEmail } from "@/lib/super-admin";
 
 type Props = {
   params: Promise<{ orgSlug: string }>;
@@ -23,15 +24,18 @@ export default async function OrgTurnsPage({ params, searchParams }: Props) {
     where: { userId: session.user.id, org: { slug: orgSlug } },
     include: { org: true },
   });
-  if (!membership) notFound();
+  const superAdmin = isSuperAdminEmail(session.user.email ?? null);
+  if (!membership && !superAdmin) notFound();
+  const org = membership?.org ?? (await prisma.organization.findUnique({ where: { slug: orgSlug } }));
+  if (!org) notFound();
 
-  const roles = normalizeRoles([membership.role, ...membership.roles]);
+  const roles = membership ? normalizeRoles([membership.role, ...membership.roles]) : ["OWNER", "ADMIN"];
   const isWorkerOnly = !hasAnyRole(roles, ["OWNER", "ADMIN", "MANAGER"]);
 
   if (isWorkerOnly) {
     const qs = searchParams ? await searchParams : undefined;
     const assignedCalendars = await prisma.calendarMember.findMany({
-      where: { userId: session.user.id, calendar: { orgId: membership.orgId }, isActive: true },
+      where: { userId: session.user.id, calendar: { orgId: org.id }, isActive: true },
       select: { calendarId: true, calendar: { select: { id: true, name: true } } },
       orderBy: { calendar: { name: "asc" } },
     });
@@ -100,7 +104,7 @@ export default async function OrgTurnsPage({ params, searchParams }: Props) {
   const assignedCalendarIds = isManagerOnly
     ? (
         await prisma.calendarMember.findMany({
-          where: { userId: session.user.id, calendar: { orgId: membership.orgId } },
+          where: { userId: session.user.id, calendar: { orgId: org.id } },
           select: { calendarId: true },
         })
       ).map((m) => m.calendarId)
@@ -109,7 +113,7 @@ export default async function OrgTurnsPage({ params, searchParams }: Props) {
   const todayIso = new Date().toISOString().slice(0, 10);
   const toArchive = await prisma.schedule.findMany({
     where: {
-      calendar: { orgId: membership.orgId },
+      calendar: { orgId: org.id },
       status: { not: "ARCHIVED" },
     },
     select: { id: true, generationLog: true },
@@ -129,7 +133,7 @@ export default async function OrgTurnsPage({ params, searchParams }: Props) {
 
   const schedules = await prisma.schedule.findMany({
     where: {
-      calendar: { orgId: membership.orgId },
+      calendar: { orgId: org.id },
       status: { not: "ARCHIVED" },
       ...(isManagerOnly ? { calendarId: { in: assignedCalendarIds } } : {}),
     },
@@ -138,7 +142,7 @@ export default async function OrgTurnsPage({ params, searchParams }: Props) {
   });
   const calendars = await prisma.calendar.findMany({
     where: {
-      orgId: membership.orgId,
+      orgId: org.id,
       isActive: true,
       ...(isManagerOnly ? { id: { in: assignedCalendarIds } } : {}),
     },
@@ -176,7 +180,7 @@ export default async function OrgTurnsPage({ params, searchParams }: Props) {
           { label: "Turni" },
         ]}
       />
-      <OrgTurnsBoard orgSlug={membership.org.slug} canCreate={canCreate} calendars={calendars} turnsByCalendar={turnsByCalendar} />
+      <OrgTurnsBoard orgSlug={org.slug} canCreate={canCreate} calendars={calendars} turnsByCalendar={turnsByCalendar} />
     </>
   );
 }

@@ -1,9 +1,11 @@
 import { notFound, redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
 import { AppBreadcrumbs } from "@/components/app-breadcrumbs";
+import { OrgSettingsForm } from "@/components/org-settings-form";
 import { authOptions } from "@/lib/auth";
 import { hasAnyRole, normalizeRoles } from "@/lib/org-roles";
 import { prisma } from "@/lib/prisma";
+import { isSuperAdminEmail } from "@/lib/super-admin";
 
 type Props = {
   params: Promise<{ orgSlug: string }>;
@@ -25,12 +27,15 @@ export default async function OrgSettingsPage({ params }: Props) {
     include: { org: true },
   });
 
-  if (!membership) {
+  const superAdmin = isSuperAdminEmail(session.user.email ?? null);
+  if (!membership && !superAdmin) {
     notFound();
   }
-  const effectiveRoles = normalizeRoles([membership.role, ...membership.roles]);
+  const org = membership?.org ?? (await prisma.organization.findUnique({ where: { slug: orgSlug } }));
+  if (!org) notFound();
+  const effectiveRoles = membership ? normalizeRoles([membership.role, ...membership.roles]) : ["OWNER", "ADMIN"];
   if (!hasAnyRole(effectiveRoles, ["OWNER", "ADMIN"])) {
-    redirect(`/${membership.org.slug}`);
+    redirect(`/${org.slug}`);
   }
 
   return (
@@ -43,11 +48,9 @@ export default async function OrgSettingsPage({ params }: Props) {
       />
       <h2 className="h2 fw-bold mt-3">Impostazioni</h2>
       <p className="text-secondary">
-        Configura i parametri principali dell&apos;organizzazione <strong>{membership.org.name}</strong>.
+        Configura i parametri principali dell&apos;organizzazione <strong>{org.name}</strong>.
       </p>
-      <footer className="small text-secondary mt-4 pt-2 border-top">
-        Turny - gestione turni
-      </footer>
+      <OrgSettingsForm orgSlug={org.slug} initialName={org.name} initialDescription={org.description ?? ""} />
     </>
   );
 }

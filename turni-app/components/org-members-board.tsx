@@ -44,6 +44,7 @@ type Props = {
   canManage: boolean;
   canEditRole: boolean;
   canAssignAdmin: boolean;
+  allCalendars: { id: string; name: string; color: string | null }[];
   calendarsByUser: Record<string, AssignedCalendar[]>;
 };
 
@@ -55,6 +56,7 @@ export function OrgMembersBoard({
   canManage,
   canEditRole,
   canAssignAdmin,
+  allCalendars,
   calendarsByUser,
 }: Props) {
   const [openCreate, setOpenCreate] = useState(false);
@@ -73,6 +75,7 @@ export function OrgMembersBoard({
                 canEditRole={canEditRole}
                 canRemove={canManage}
                 canAssignAdmin={canAssignAdmin}
+                allCalendars={allCalendars}
                 assignedCalendars={calendarsByUser[item.userId] ?? []}
                 professionalRoleSuggestions={professionalRoleSuggestions}
               />

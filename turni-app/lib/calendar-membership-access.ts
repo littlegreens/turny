@@ -1,5 +1,6 @@
 import { hasAnyRole, normalizeRoles } from "@/lib/org-roles";
 import { prisma } from "@/lib/prisma";
+import { isSuperAdminEmail } from "@/lib/super-admin";
 
 /**
  * Verifica se l'utente puo gestire i membri di un calendario (aggiungere/rimuovere persone).
@@ -8,6 +9,10 @@ import { prisma } from "@/lib/prisma";
 export async function canManageCalendarRoster(userId: string, calendarId: string) {
   const calendar = await prisma.calendar.findUnique({ where: { id: calendarId } });
   if (!calendar) return { ok: false as const, status: 404, error: "Calendario non trovato" };
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
+  if (isSuperAdminEmail(user?.email ?? null)) {
+    return { ok: true as const, calendar, roles: ["OWNER", "ADMIN"] as const };
+  }
 
   const membership = await prisma.orgMember.findFirst({
     where: { userId, orgId: calendar.orgId },

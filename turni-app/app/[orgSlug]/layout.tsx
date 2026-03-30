@@ -6,6 +6,7 @@ import { OrgSidebar } from "@/components/org-sidebar";
 import { authOptions } from "@/lib/auth";
 import { hasAnyRole, normalizeRoles } from "@/lib/org-roles";
 import { prisma } from "@/lib/prisma";
+import { isSuperAdminEmail } from "@/lib/super-admin";
 
 type Props = {
   children: ReactNode;
@@ -24,16 +25,24 @@ export default async function OrgLayout({ children, params }: Props) {
     include: { org: true },
   });
 
-  if (!membership) {
+  const isSuperAdmin = isSuperAdminEmail(session.user.email ?? null);
+  if (!membership && !isSuperAdmin) {
     notFound();
   }
-  const roles = normalizeRoles([membership.role, ...membership.roles]);
+  const org = membership?.org ?? (await prisma.organization.findUnique({ where: { slug: orgSlug } }));
+  if (!org) notFound();
+  const roles = membership ? normalizeRoles([membership.role, ...membership.roles]) : ["OWNER", "ADMIN"];
   const isWorkerOnly = !hasAnyRole(roles, ["OWNER", "ADMIN", "MANAGER"]);
   const displayName = session.user.name || session.user.email?.split("@")[0] || null;
 
   return (
     <div className="d-flex">
-      <OrgSidebar orgSlug={membership.org.slug} orgName={membership.org.name} isWorkerOnly={isWorkerOnly} />
+      <OrgSidebar
+        orgSlug={org.slug}
+        orgName={org.name}
+        isWorkerOnly={isWorkerOnly}
+        isSuperAdmin={isSuperAdmin}
+      />
       <main className="container-fluid py-4 px-3 px-xl-4" style={{ minHeight: "100vh" }}>
         <AppHeader isAuthenticated displayName={displayName} />
         <div className="pt-3">{children}</div>

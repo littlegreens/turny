@@ -28,6 +28,7 @@ export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, m
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
@@ -138,6 +139,7 @@ export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, m
   async function persist(nextRules: RuleDraft[], nextDowRules?: DowRuleDraft[], nextRestDays?: number) {
     setLoading(true);
     setError(null);
+    setInfo(null);
     try {
       const prev = (initialCalendarRules ?? {}) as Record<string, unknown>;
       const dows = nextDowRules ?? dowRules;
@@ -175,6 +177,7 @@ export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, m
       setRules(nextRules);
       if (nextDowRules) setDowRules(nextDowRules);
       if (nextRestDays !== undefined) setRestDaysAfterNight(nextRestDays);
+      setInfo("Configurazione calendario salvata.");
       router.refresh();
       return true;
     } catch (e) {
@@ -256,12 +259,13 @@ export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, m
           Regole generali di co-presenza e esclusione, valide per tutti i periodi di questo calendario.
         </p>
         {error ? <div className="alert alert-danger py-2 mt-3 mb-0">{error}</div> : null}
+        {info ? <div className="alert alert-success py-2 mt-3 mb-0">{info}</div> : null}
 
         {rules.length === 0 ? (
           <div className="mt-3 d-flex justify-content-between align-items-center">
             <p className="small text-secondary mb-0">Non ci sono regole.</p>
             <button className="btn btn-success" type="button" onClick={() => openModal(null)} disabled={!canEdit || loading}>
-              Aggiungi regola
+              Aggiungi regola persona/ruolo
             </button>
           </div>
         ) : (
@@ -289,7 +293,7 @@ export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, m
             ))}
             <div className="d-flex justify-content-end">
               <button className="btn btn-success" type="button" onClick={() => openModal(null)} disabled={!canEdit || loading}>
-                Aggiungi regola
+                Aggiungi regola persona/ruolo
               </button>
             </div>
           </div>
@@ -461,7 +465,7 @@ export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, m
         <div className="d-flex justify-content-end">
           <button
             type="button"
-            className="btn btn-outline-success btn-sm"
+            className="btn btn-success btn-sm"
             disabled={!canEdit || loading}
             onClick={() => {
               setDowEditingId(null);
@@ -472,7 +476,7 @@ export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, m
               setDowModalOpen(true);
             }}
           >
-            + Aggiungi vincolo giorno
+            Aggiungi regola giorno
           </button>
         </div>
       </div>
@@ -577,6 +581,18 @@ export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, m
         })();
       }}
     />
+    <div className="d-flex justify-content-end mt-3">
+      <button
+        type="button"
+        className="btn btn-success"
+        disabled={!canEdit || loading}
+        onClick={() => {
+          void persist(rules, dowRules, restDaysAfterNight);
+        }}
+      >
+        Salva
+      </button>
+    </div>
     </>
   );
 }

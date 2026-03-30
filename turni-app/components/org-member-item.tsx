@@ -23,6 +23,7 @@ type Props = {
   canRemove: boolean;
   canAssignAdmin: boolean;
   professionalRoleSuggestions: string[];
+  allCalendars: { id: string; name: string; color: string | null }[];
   assignedCalendars: {
     id: string;
     name: string;
@@ -46,6 +47,7 @@ export function OrgMemberItem({
   canRemove,
   canAssignAdmin,
   professionalRoleSuggestions,
+  allCalendars,
   assignedCalendars,
 }: Props) {
   const router = useRouter();
@@ -57,6 +59,7 @@ export function OrgMemberItem({
   const [email, setEmail] = useState(member.user.email);
   const [password, setPassword] = useState("");
   const [roles, setRoles] = useState<string[]>(member.roles.length ? member.roles : [member.role]);
+  const [managedCalendarIds, setManagedCalendarIds] = useState<string[]>(assignedCalendars.map((c) => c.id));
   const [rowColor, setRowColor] = useState(member.defaultDisplayColor ?? "");
   const [openWeekdayPickerFor, setOpenWeekdayPickerFor] = useState<string | null>(null);
   const [calendarPrefs, setCalendarPrefs] = useState<Record<string, {
@@ -109,10 +112,11 @@ export function OrgMemberItem({
       professionalRole,
       password,
       roles: [...roles].sort(),
+      managedCalendarIds: [...managedCalendarIds].sort(),
       rowColor,
       prefs,
     });
-  }, [calendarPrefs, email, firstName, lastName, password, professionalRole, roles, rowColor, username]);
+  }, [calendarPrefs, email, firstName, lastName, managedCalendarIds, password, professionalRole, roles, rowColor, username]);
 
   const editFormDirty = useMemo(() => {
     if (!editOpen) return false;
@@ -139,6 +143,7 @@ export function OrgMemberItem({
     const profN = member.user.professionalRole || "";
     const emailN = member.user.email;
     const rolesN = member.roles.length ? [...member.roles] : [member.role];
+    const managedCalN = assignedCalendars.map((c) => c.id);
     const rowN = member.defaultDisplayColor ?? "";
     const prefsN = Object.fromEntries(
       assignedCalendars.map((cal) => [
@@ -165,6 +170,7 @@ export function OrgMemberItem({
       professionalRole: profN,
       password: "",
       roles: [...rolesN].sort(),
+      managedCalendarIds: [...managedCalN].sort(),
       rowColor: rowN,
       prefs: prefsSnap,
       }),
@@ -176,6 +182,7 @@ export function OrgMemberItem({
     setEmail(emailN);
     setPassword("");
     setRoles(rolesN);
+    setManagedCalendarIds(managedCalN);
     setRowColor(rowN);
     setCalendarPrefs(prefsN);
     setSaveError(null);
@@ -206,6 +213,7 @@ export function OrgMemberItem({
         email,
         password,
         roles,
+        managedCalendarIds,
         defaultDisplayColor: rowColor.trim() === "" ? null : rowColor.trim(),
         useDisplayColorInCalendars: true,
         calendarPreferences: assignedCalendars.map((cal) => ({
@@ -244,6 +252,12 @@ export function OrgMemberItem({
     tryCloseEdit(true);
     setPassword("");
     router.refresh();
+  }
+
+  function toggleManagedCalendar(calendarId: string) {
+    setManagedCalendarIds((prev) =>
+      prev.includes(calendarId) ? prev.filter((id) => id !== calendarId) : [...prev, calendarId],
+    );
   }
 
   async function remove() {
@@ -387,6 +401,32 @@ export function OrgMemberItem({
               ))}
             </div>
           </div>
+          {roles.includes("MANAGER") ? (
+            <div className="col-12">
+              <label className="form-label small mb-1 d-block">Assegna calendari al manager</label>
+              <p className="small text-secondary mb-2">
+                Questi calendari definiscono dove il manager puo accedere e creare turni.
+              </p>
+              <div className="d-flex flex-wrap gap-2">
+                {allCalendars.map((cal) => {
+                  const active = managedCalendarIds.includes(cal.id);
+                  return (
+                    <button
+                      key={cal.id}
+                      type="button"
+                      className={`btn btn-sm ${active ? "btn-success" : "btn-outline-success"}`}
+                      onClick={() => toggleManagedCalendar(cal.id)}
+                      disabled={!canEditRole || loading}
+                      title={cal.name}
+                    >
+                      {cal.name}
+                    </button>
+                  );
+                })}
+              </div>
+              {!allCalendars.length ? <p className="small text-secondary mt-2 mb-0">Nessun calendario disponibile.</p> : null}
+            </div>
+          ) : null}
           <div className="col-12 mt-3">
             <div className="p-0">
               <p className="fw-semibold mb-2" style={{ fontSize: "1rem", lineHeight: 1.2 }}>

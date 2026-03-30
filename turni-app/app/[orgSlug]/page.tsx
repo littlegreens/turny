@@ -1,11 +1,10 @@
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
 import { AppBreadcrumbs } from "@/components/app-breadcrumbs";
-import { OrgCalendarsBoard } from "@/components/org-calendars-board";
 import { authOptions } from "@/lib/auth";
 import { hasAnyRole, normalizeRoles } from "@/lib/org-roles";
 import { prisma } from "@/lib/prisma";
+import { isSuperAdminEmail } from "@/lib/super-admin";
 
 type Props = {
   params: Promise<{ orgSlug: string }>;
@@ -29,57 +28,79 @@ export default async function OrgDashboardPage({ params }: Props) {
     },
   });
 
-  if (!membership) {
+  const superAdmin = isSuperAdminEmail(session.user.email ?? null);
+  if (!membership && !superAdmin) {
     notFound();
   }
+  const org = membership?.org ?? (await prisma.organization.findUnique({ where: { slug: orgSlug } }));
+  if (!org) notFound();
 
-  const effectiveRoles = normalizeRoles([membership.role, ...membership.roles]);
+  const effectiveRoles = membership ? normalizeRoles([membership.role, ...membership.roles]) : (["OWNER", "ADMIN"] as const);
   const isWorkerOnly = !hasAnyRole(effectiveRoles, ["OWNER", "ADMIN", "MANAGER"]);
   if (isWorkerOnly) {
-    redirect(`/${membership.org.slug}/turni`);
+    redirect(`/${org.slug}/turni`);
   }
   const isManagerOnly = hasAnyRole(effectiveRoles, ["MANAGER"]) && !hasAnyRole(effectiveRoles, ["OWNER", "ADMIN"]);
   const assignedCalendarIds = isManagerOnly
     ? (
         await prisma.calendarMember.findMany({
-          where: { userId: session.user.id, calendar: { orgId: membership.org.id } },
+          where: { userId: session.user.id, calendar: { orgId: org.id } },
           select: { calendarId: true },
         })
       ).map((item) => item.calendarId)
     : [];
 
-  const calendars = await prisma.calendar.findMany({
-    where: isManagerOnly
-      ? { orgId: membership.org.id, id: { in: assignedCalendarIds.length ? assignedCalendarIds : ["__none__"] } }
-      : { orgId: membership.org.id },
-    orderBy: { createdAt: "desc" },
-  });
+  const visibleCalendarWhere = isManagerOnly
+    ? { orgId: org.id, id: { in: assignedCalendarIds.length ? assignedCalendarIds : ["__none__"] } }
+    : { orgId: org.id };
 
-  const canCreateCalendar = hasAnyRole(effectiveRoles, ["OWNER", "ADMIN"]);
+  const [calendarCount, scheduleCount, publishedCount, activeMembers] = await Promise.all([
+    prisma.calendar.count({ where: visibleCalendarWhere }),
+    prisma.schedule.count({ where: { calendar: visibleCalendarWhere } }),
+    prisma.schedule.count({ where: { calendar: visibleCalendarWhere, status: "PUBLISHED" } }),
+    prisma.orgMember.count({ where: { orgId: org.id } }),
+  ]);
 
   return (
     <>
       <AppBreadcrumbs
         items={[
           { label: "Home", href: "/" },
-          { label: "Calendari" },
+          { label: "Dashboard" },
         ]}
       />
-      <h2 className="h2 fw-bold mt-3">Calendari</h2>
-      <p className="text-secondary mb-3">
-        Gestisci i calendari operativi dell&apos;organizzazione, con team, configurazioni e turni collegati.
-      </p>
+      <h2 className="h2 fw-bold mt-3">Dashboard</h2>
+      <p className="text-secondary mb-3">{org.name}. Panoramica rapida del workspace.</p>
 
-      <OrgCalendarsBoard orgSlug={membership.org.slug} calendars={calendars} canCreateCalendar={canCreateCalendar} />
-
-      <div className="mt-4 d-flex gap-3">
-        <Link href={`/${membership.org.slug}/settings`} className="link-dark">
-          Impostazioni organizzazione
-        </Link>
+      <div className="row g-3">
+        {[
+          { label: "Calendari", value: calendarCount },
+          { label: "Turni creati", value: scheduleCount },
+          { label: "Turni pubblicati", value: publishedCount },
+          { label: "Membri attivi", value: activeMembers },
+        ].map((item) => (
+          <div key={item.label} className="col-6 col-md-3">
+            <div
+              className="card h-100 border-0 text-white shadow-sm"
+              style={{ background: "linear-gradient(135deg, #1f7a3f 0%, #2e9c56 100%)", minHeight: 132 }}
+            >
+              <div className="card-body d-flex flex-column justify-content-between">
+                <div className="small" style={{ opacity: 0.9 }}>{item.label}</div>
+                <div className="display-5 fw-bold mb-0 text-white">{item.value}</div>
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
-      <footer className="small text-secondary mt-4 pt-2 border-top">
-        Turny - gestione turni
-      </footer>
+
+      <div className="card mt-3">
+        <div className="card-body d-flex flex-wrap gap-2">
+          <a href={`/${org.slug}/calendari`} className="btn btn-success">Apri calendari</a>
+          <a href={`/${org.slug}/turni`} className="btn btn-outline-success">Apri turni</a>
+          <a href={`/${org.slug}/members`} className="btn btn-outline-success">Apri membri</a>
+          <a href={`/${org.slug}/settings`} className="btn btn-outline-success">Apri settings</a>
+        </div>
+      </div>
     </>
   );
 }

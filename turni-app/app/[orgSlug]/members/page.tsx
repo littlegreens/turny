@@ -7,6 +7,7 @@ import { hasAnyRole, normalizeRoles } from "@/lib/org-roles";
 import { fetchOrgMemberDisplayColors } from "@/lib/org-member-display-colors";
 import { distinctProfessionalRolesFromMembers } from "@/lib/org-professional-roles";
 import { prisma } from "@/lib/prisma";
+import { isSuperAdminEmail } from "@/lib/super-admin";
 
 type Props = {
   params: Promise<{ orgSlug: string }>;
@@ -21,23 +22,31 @@ export default async function OrgMembersPage({ params }: Props) {
     where: { userId: session.user.id, org: { slug: orgSlug } },
     include: { org: true },
   });
-  if (!membership) notFound();
+  const superAdmin = isSuperAdminEmail(session.user.email ?? null);
+  if (!membership && !superAdmin) notFound();
+  const orgId = membership?.orgId ?? (await prisma.organization.findUnique({ where: { slug: orgSlug }, select: { id: true } }))?.id;
+  if (!orgId) notFound();
 
   const members = await prisma.orgMember.findMany({
-    where: { orgId: membership.orgId },
+    where: { orgId },
     include: { user: { select: { id: true, email: true, name: true, firstName: true, lastName: true, professionalRole: true } } },
     orderBy: [{ role: "asc" }, { createdAt: "asc" }],
+  });
+  const allCalendars = await prisma.calendar.findMany({
+    where: { orgId },
+    select: { id: true, name: true, color: true },
+    orderBy: { createdAt: "asc" },
   });
   const orgColorByUserId = new Map(
     (
       await fetchOrgMemberDisplayColors(
-        membership.orgId,
+        orgId,
         members.map((m) => m.userId),
       )
     ).map((r) => [r.userId, r]),
   );
   const calendarMemberships = await prisma.calendarMember.findMany({
-    where: { calendar: { orgId: membership.orgId } },
+    where: { calendar: { orgId } },
     select: {
       id: true,
       userId: true,
@@ -133,7 +142,7 @@ export default async function OrgMembersPage({ params }: Props) {
     return acc;
   }, {});
 
-  const effectiveRoles = normalizeRoles([membership.role, ...membership.roles]);
+  const effectiveRoles = membership ? normalizeRoles([membership.role, ...membership.roles]) : ["OWNER", "ADMIN"];
   if (!hasAnyRole(effectiveRoles, ["OWNER", "ADMIN", "MANAGER"])) {
     redirect(`/${membership.org.slug}/turni`);
   }
@@ -158,7 +167,7 @@ export default async function OrgMembersPage({ params }: Props) {
       </p>
 
       <OrgMembersBoard
-        orgSlug={membership.org.slug}
+        orgSlug={orgSlug}
         myUserId={session.user.id}
         professionalRoleSuggestions={professionalRoleSuggestions}
         members={members.map((item) => ({
@@ -179,6 +188,7 @@ export default async function OrgMembersPage({ params }: Props) {
         canManage={canManage}
         canEditRole={canEditRole}
         canAssignAdmin={canAssignAdmin}
+        allCalendars={allCalendars}
         calendarsByUser={calendarsByUser}
       />
     </>

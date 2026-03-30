@@ -859,7 +859,7 @@ export function ScheduleGridPanel({
         return;
       }
       const created = payload.created ?? 0;
-      setInfo(`Generazione completata: ${created} assegnazioni create.`);
+      setInfo(`Generazione completata: ${created} assegnazioni create e salvate automaticamente.`);
       router.refresh();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -896,7 +896,7 @@ export function ScheduleGridPanel({
     setError(null);
     await router.refresh();
     setLoadingKey(null);
-    setInfo("Aggiornato.");
+    setInfo("Salvato.");
   }
 
   async function publishSchedule() {

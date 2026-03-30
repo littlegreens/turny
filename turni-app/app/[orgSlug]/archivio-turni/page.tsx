@@ -6,6 +6,7 @@ import { ScheduleRipristinaButton } from "@/components/schedule-ripristina-butto
 import { authOptions } from "@/lib/auth";
 import { hasAnyRole, normalizeRoles } from "@/lib/org-roles";
 import { prisma } from "@/lib/prisma";
+import { isSuperAdminEmail } from "@/lib/super-admin";
 
 type Props = {
   params: Promise<{ orgSlug: string }>;
@@ -20,17 +21,20 @@ export default async function OrgTurnsArchivePage({ params }: Props) {
     where: { userId: session.user.id, org: { slug: orgSlug } },
     include: { org: true },
   });
-  if (!membership) notFound();
+  const superAdmin = isSuperAdminEmail(session.user.email ?? null);
+  if (!membership && !superAdmin) notFound();
+  const org = membership?.org ?? (await prisma.organization.findUnique({ where: { slug: orgSlug } }));
+  if (!org) notFound();
 
-  const roles = normalizeRoles([membership.role, ...membership.roles]);
+  const roles = membership ? normalizeRoles([membership.role, ...membership.roles]) : ["OWNER", "ADMIN"];
   if (!hasAnyRole(roles, ["OWNER", "ADMIN", "MANAGER"])) {
-    redirect(`/${membership.org.slug}/turni`);
+    redirect(`/${org.slug}/turni`);
   }
   const isManagerOnly = hasAnyRole(roles, ["MANAGER"]) && !hasAnyRole(roles, ["OWNER", "ADMIN"]);
   const assignedCalendarIds = isManagerOnly
     ? (
         await prisma.calendarMember.findMany({
-          where: { userId: session.user.id, calendar: { orgId: membership.orgId } },
+          where: { userId: session.user.id, calendar: { orgId: org.id } },
           select: { calendarId: true },
         })
       ).map((m) => m.calendarId)
@@ -38,7 +42,7 @@ export default async function OrgTurnsArchivePage({ params }: Props) {
 
   const schedules = await prisma.schedule.findMany({
     where: {
-      calendar: { orgId: membership.orgId },
+      calendar: { orgId: org.id },
       status: "ARCHIVED",
       ...(isManagerOnly ? { calendarId: { in: assignedCalendarIds } } : {}),
     },
@@ -51,7 +55,7 @@ export default async function OrgTurnsArchivePage({ params }: Props) {
       <AppBreadcrumbs
         items={[
           { label: "Home", href: "/" },
-          { label: "Turni", href: `/${membership.org.slug}/turni` },
+          { label: "Turni", href: `/${org.slug}/turni` },
           { label: "Archivio turni" },
         ]}
       />
@@ -74,10 +78,10 @@ export default async function OrgTurnsArchivePage({ params }: Props) {
                     <p className="small text-secondary mb-0">Stato: {s.status}</p>
                   </div>
                   <div className="d-flex gap-2 flex-wrap align-items-center">
-                    <Link className="btn btn-sm btn-outline-secondary" href={`/${membership.org.slug}/${s.calendar.id}/schedules/${s.id}/report`}>
+                    <Link className="btn btn-sm btn-outline-secondary" href={`/${org.slug}/${s.calendar.id}/schedules/${s.id}/report`}>
                       Apri report
                     </Link>
-                    <ScheduleRipristinaButton scheduleId={s.id} orgSlug={membership.org.slug} />
+                    <ScheduleRipristinaButton scheduleId={s.id} orgSlug={org.slug} />
                   </div>
                 </li>
               ))}

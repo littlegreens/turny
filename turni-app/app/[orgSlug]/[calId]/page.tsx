@@ -8,6 +8,7 @@ import { CalendarCoRulesPanelV2 } from "@/components/calendar-co-rules-panel-v2"
 import { authOptions } from "@/lib/auth";
 import { hasAnyRole, normalizeRoles } from "@/lib/org-roles";
 import { prisma } from "@/lib/prisma";
+import { isSuperAdminEmail } from "@/lib/super-admin";
 
 type Props = {
   params: Promise<{ orgSlug: string; calId: string }>;
@@ -36,10 +37,11 @@ export default async function CalendarDetailPage({ params }: Props) {
       orgId: calendar.orgId,
     },
   });
-  if (!membership) {
+  const superAdmin = isSuperAdminEmail(session.user.email ?? null);
+  if (!membership && !superAdmin) {
     notFound();
   }
-  const effectiveRoles = normalizeRoles([membership.role, ...membership.roles]);
+  const effectiveRoles = membership ? normalizeRoles([membership.role, ...membership.roles]) : ["OWNER", "ADMIN"];
   if (!hasAnyRole(effectiveRoles, ["OWNER", "ADMIN", "MANAGER"])) {
     redirect(`/${orgSlug}/turni`);
   }
@@ -83,7 +85,7 @@ export default async function CalendarDetailPage({ params }: Props) {
       <AppBreadcrumbs
         items={[
           { label: "Home", href: "/" },
-          { label: "Calendari", href: `/${orgSlug}` },
+          { label: "Calendari", href: `/${orgSlug}/calendari` },
           { label: calendar.name },
         ]}
       />
@@ -127,14 +129,6 @@ export default async function CalendarDetailPage({ params }: Props) {
         }))}
       />
 
-      <div className="mt-4">
-        <Link href={`/${orgSlug}`} className="link-dark">
-          Torna ai calendari
-        </Link>
-      </div>
-      <footer className="small text-secondary mt-4 pt-2 border-top">
-        Turny - gestione turni
-      </footer>
     </>
   );
 }

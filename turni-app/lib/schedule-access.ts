@@ -1,6 +1,7 @@
 import type { Calendar, Schedule } from "@prisma/client";
 import { hasAnyRole, normalizeRoles, type OrgRoleValue } from "@/lib/org-roles";
 import { prisma } from "@/lib/prisma";
+import { isSuperAdminEmail } from "@/lib/super-admin";
 
 export type ScheduleAccess =
   | { ok: true; schedule: Schedule; calendar: Calendar; roles: OrgRoleValue[] }
@@ -13,6 +14,10 @@ export async function authorizeScheduleAccess(scheduleId: string, userId: string
     include: { calendar: true },
   });
   if (!schedule) return { ok: false, status: 404, error: "Schedule non trovato" };
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
+  if (isSuperAdminEmail(user?.email ?? null)) {
+    return { ok: true, schedule, calendar: schedule.calendar, roles: ["OWNER", "ADMIN"] };
+  }
 
   const membership = await prisma.orgMember.findFirst({
     where: { userId, orgId: schedule.calendar.orgId },
