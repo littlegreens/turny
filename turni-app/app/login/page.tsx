@@ -77,7 +77,7 @@ function LoginForm() {
             required
           />
         </div>
-        {error ? <p className="text-danger small">{error}</p> : null}
+        {error ? <div className="alert alert-danger py-2 small" role="alert">{error}</div> : null}
         <button
           type="submit"
           disabled={loading}

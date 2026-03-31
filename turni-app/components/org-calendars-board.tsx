@@ -12,6 +12,7 @@ type CalendarRow = {
   isActive: boolean;
   description: string | null;
   activeWeekdays: number[];
+  _count?: { shiftTypes: number };
 };
 
 type Props = {
@@ -29,7 +30,10 @@ export function OrgCalendarsBoard({ orgSlug, calendars, canCreateCalendar }: Pro
         <div className="card-body">
           <h2 className="h5 fw-semibold">Calendari</h2>
           {calendars.length === 0 ? (
-            <p className="text-secondary">Nessun calendario creato.</p>
+            <div className="alert alert-light border mt-3 mb-0" role="status">
+              <div className="fw-semibold mb-1">Nessun calendario creato.</div>
+              <div className="small text-secondary">Crea il primo calendario per iniziare a configurare turni e membri.</div>
+            </div>
           ) : (
             <ul className="list-unstyled mt-3 d-grid gap-2">
               {calendars.map((calendar) => (

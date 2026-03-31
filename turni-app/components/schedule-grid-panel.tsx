@@ -9,6 +9,7 @@ import { ColorPalettePicker } from "@/components/color-palette-picker";
 import { DateMultiPicker } from "@/components/date-multi-picker";
 import { InfeasibleGenerateModal } from "@/components/infeasible-generate-modal";
 import { ScheduleReportCsvButton } from "@/components/schedule-report-csv-button";
+import { useAppToast } from "@/components/app-toast-provider";
 import type { InfeasibilityHints } from "@/lib/infeasibility-hints";
 import type { CoverageAlert, MemberReportRow } from "@/lib/schedule-report";
 
@@ -190,10 +191,9 @@ export function ScheduleGridPanel({
   reportCsvFilename,
 }: Props) {
   const router = useRouter();
+  const { showToast } = useAppToast();
   const canEditRules = canEdit && scheduleStatus === "DRAFT";
   const [loadingKey, setLoadingKey] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [info, setInfo] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [clearOpen, setClearOpen] = useState(false);
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(members[0]?.id ?? null);
@@ -245,17 +245,6 @@ export function ScheduleGridPanel({
   const [publishOpen, setPublishOpen] = useState(false);
   const [memberUseOrgColor, setMemberUseOrgColor] = useState(false);
 
-  useEffect(() => {
-    if (!info) return;
-    const timer = setTimeout(() => setInfo(null), 2800);
-    return () => clearTimeout(timer);
-  }, [info]);
-
-  useEffect(() => {
-    if (!error) return;
-    const timer = setTimeout(() => setError(null), 4200);
-    return () => clearTimeout(timer);
-  }, [error]);
 
   useEffect(() => {
     const raw = (scheduleRules ?? {}) as { coPresenceRules?: unknown };
@@ -343,11 +332,11 @@ export function ScheduleGridPanel({
   async function saveAllRules(nextRules: RuleDraft[], fromModal = false) {
     if (!canEditRules) {
       const msg = "Le regole turno si possono modificare solo quando il turno è in bozza.";
-      if (fromModal) setRuleModalError(msg); else setError(msg);
+      if (fromModal) setRuleModalError(msg); else showToast("error", msg);
       return false;
     }
     setLoadingKey("rules");
-    if (fromModal) setRuleModalError(null); else setError(null);
+    if (fromModal) setRuleModalError(null);
     try {
       const cleaned = nextRules
         .map((r) => ({
@@ -369,16 +358,16 @@ export function ScheduleGridPanel({
       try { payload = JSON.parse(rawText) as { error?: string }; } catch { /* not json */ }
       if (!res.ok) {
         const msg = payload.error ?? `Errore ${res.status}: ${rawText.slice(0, 200) || "risposta non valida"}`;
-        if (fromModal) setRuleModalError(msg); else setError(msg);
+        if (fromModal) setRuleModalError(msg); else showToast("error", msg);
         return false;
       }
       setRulesDraft(cleaned);
-      setInfo("Regole salvate.");
+      showToast("success", "Regole salvate.");
       router.refresh();
       return true;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      if (fromModal) setRuleModalError(msg); else setError(msg);
+      if (fromModal) setRuleModalError(msg); else showToast("error", msg);
       return false;
     } finally {
       setLoadingKey(null);
@@ -746,7 +735,6 @@ export function ScheduleGridPanel({
   async function addAssignment(date: string, shiftTypeId: string, memberId: string) {
     if (!canEdit || !memberId) return;
     setLoadingKey(`${date}|${shiftTypeId}|add`);
-    setError(null);
     const res = await fetch(`/api/schedules/${scheduleId}/assignments`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -755,7 +743,7 @@ export function ScheduleGridPanel({
     const payload = (await res.json()) as { error?: string };
     setLoadingKey(null);
     if (!res.ok) {
-      setError(payload.error ?? "Errore salvataggio");
+      showToast("error", payload.error ?? "Errore salvataggio");
       return;
     }
     router.refresh();
@@ -763,13 +751,12 @@ export function ScheduleGridPanel({
 
   async function removeAssignment(id: string) {
     setLoadingKey(`${id}|del`);
-    setError(null);
     const res = await fetch(`/api/shift-assignments/${id}`, { method: "DELETE" });
     const payload = (await res.json()) as { error?: string };
     setLoadingKey(null);
     setDeleteId(null);
     if (!res.ok) {
-      setError(payload.error ?? "Errore eliminazione");
+      showToast("error", payload.error ?? "Errore eliminazione");
       return;
     }
     router.refresh();
@@ -778,7 +765,6 @@ export function ScheduleGridPanel({
   async function archiveSchedule() {
     if (!canManageSchedule) return;
     setLoadingKey("archive");
-    setError(null);
     const res = await fetch(`/api/schedules/${scheduleId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -787,7 +773,7 @@ export function ScheduleGridPanel({
     setLoadingKey(null);
     setArchiveOpen(false);
     if (!res.ok) {
-      setError("Archiviazione non riuscita");
+      showToast("error", "Archiviazione non riuscita");
       return;
     }
     router.push(`/${orgSlug}/turni`);
@@ -797,7 +783,6 @@ export function ScheduleGridPanel({
   async function restoreSchedule() {
     if (!canManageSchedule) return;
     setLoadingKey("restore");
-    setError(null);
     const res = await fetch(`/api/schedules/${scheduleId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -806,7 +791,7 @@ export function ScheduleGridPanel({
     setLoadingKey(null);
     setRestoreOpen(false);
     if (!res.ok) {
-      setError("Ripristino non riuscito");
+      showToast("error", "Ripristino non riuscito");
       return;
     }
     router.push(`/${orgSlug}/turni`);
@@ -816,8 +801,6 @@ export function ScheduleGridPanel({
   async function generateAuto() {
     if (!canEdit) return;
     setLoadingKey("generate");
-    setError(null);
-    setInfo(null);
     try {
       const res = await fetch(`/api/schedules/${scheduleId}/generate`, {
         method: "POST",
@@ -834,13 +817,12 @@ export function ScheduleGridPanel({
       try {
         payload = (await res.json()) as typeof payload;
       } catch {
-        setError(res.ok ? "Risposta generazione non valida." : `Errore HTTP ${res.status}`);
+        showToast("error", res.ok ? "Risposta generazione non valida." : `Errore HTTP ${res.status}`);
         return;
       }
       if (!res.ok) {
         const impossible = Boolean(payload.impossible || payload.schedulerStatus === "INFEASIBLE");
         if (impossible) {
-          setError(null);
           setInfeasibleModal({
             open: true,
             message:
@@ -850,7 +832,7 @@ export function ScheduleGridPanel({
           });
           return;
         }
-        setError(
+        showToast("error",
           payload.error ??
             (res.status === 504
               ? "Timeout: la generazione ha impiegato troppo tempo. Verifica il servizio Python (uvicorn) e riprova."
@@ -859,16 +841,16 @@ export function ScheduleGridPanel({
         return;
       }
       const created = payload.created ?? 0;
-      setInfo(`Generazione completata: ${created} assegnazioni create e salvate automaticamente.`);
+      showToast("success", `Generazione completata: ${created} assegnazioni create e salvate.`);
       router.refresh();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (msg.includes("abort") || msg.includes("AbortError") || msg.includes("The operation was aborted")) {
-        setError(
+        showToast("error",
           "Timeout generazione (oltre 2 minuti). Controlla che uvicorn su turny-scheduler sia avviato e che SCHEDULER_SERVICE_URL sia corretto in .env.",
         );
       } else {
-        setError(msg || "Generazione non riuscita.");
+        showToast("error", msg || "Generazione non riuscita.");
       }
     } finally {
       setLoadingKey(null);
@@ -877,32 +859,29 @@ export function ScheduleGridPanel({
 
   async function clearAllAssignments() {
     setLoadingKey("clear");
-    setError(null);
     const res = await fetch(`/api/schedules/${scheduleId}/assignments`, { method: "DELETE" });
     const payload = (await res.json()) as { error?: string };
     setLoadingKey(null);
     setClearOpen(false);
     if (!res.ok) {
-      setError(payload.error ?? "Errore svuotamento");
+      showToast("error", payload.error ?? "Errore svuotamento");
       return;
     }
     setReportPanelOpen(false);
-    setInfo("Turno svuotato.");
+    showToast("success", "Turno svuotato.");
     router.refresh();
   }
 
   async function saveAll() {
     setLoadingKey("sync");
-    setError(null);
     await router.refresh();
     setLoadingKey(null);
-    setInfo("Salvato.");
+    showToast("success", "Salvato.");
   }
 
   async function publishSchedule() {
     if (!canManageSchedule || scheduleStatus !== "DRAFT") return;
     setLoadingKey("publish");
-    setError(null);
     const res = await fetch(`/api/schedules/${scheduleId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -911,7 +890,7 @@ export function ScheduleGridPanel({
     setLoadingKey(null);
     setPublishOpen(false);
     if (!res.ok) {
-      setError("Pubblicazione non riuscita");
+      showToast("error", "Pubblicazione non riuscita");
       return;
     }
     router.refresh();
@@ -1123,7 +1102,6 @@ export function ScheduleGridPanel({
   async function saveMemberPopup() {
     if (!selectedMemberId) return;
     setLoadingKey("member-color");
-    setError(null);
     const colorRes = await fetch(`/api/calendar-members/${selectedMemberId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -1132,7 +1110,7 @@ export function ScheduleGridPanel({
     const colorPayload = (await colorRes.json()) as { error?: string };
     if (!colorRes.ok) {
       setLoadingKey(null);
-      setError(colorPayload.error ?? "Errore salvataggio colore");
+      showToast("error", colorPayload.error ?? "Errore salvataggio colore");
       return;
     }
 
@@ -1143,7 +1121,7 @@ export function ScheduleGridPanel({
       const allOff = activeSts.every((st) => memberShiftOff[`${d.dateStr}|${st.id}`]);
       if (allOff) {
         setLoadingKey(null);
-        setError("Con DEVE giornata serve almeno un turno disponibile quel giorno.");
+        showToast("error", "Con DEVE giornata serve almeno un turno disponibile quel giorno.");
         return;
       }
     }
@@ -1181,7 +1159,7 @@ export function ScheduleGridPanel({
       ids.add(selectedMemberId);
       if (ids.size > cap) {
         setLoadingKey(null);
-        setError(
+        showToast("error",
           `Per ${formatDateIt(item.date)} · ${st?.name ?? "?"} ci sono al massimo ${cap} posti: con questo DEVE risultano ${ids.size} persone obbligate sullo stesso turno.`,
         );
         return;
@@ -1196,7 +1174,7 @@ export function ScheduleGridPanel({
     const constraintsPayload = (await constraintsRes.json()) as { error?: string };
     setLoadingKey(null);
     if (!constraintsRes.ok) {
-      setError(constraintsPayload.error ?? "Errore salvataggio disponibilita");
+      showToast("error", constraintsPayload.error ?? "Errore salvataggio disponibilita");
       return;
     }
     closeMemberPopup(true);
@@ -1205,7 +1183,6 @@ export function ScheduleGridPanel({
 
   async function moveAssignment(assignmentId: string, date: string, shiftTypeId: string) {
     setLoadingKey("move");
-    setError(null);
     const res = await fetch(`/api/shift-assignments/${assignmentId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -1214,7 +1191,7 @@ export function ScheduleGridPanel({
     const payload = (await res.json()) as { error?: string };
     setLoadingKey(null);
     if (!res.ok) {
-      setError(payload.error ?? "Errore spostamento");
+      showToast("error", payload.error ?? "Errore spostamento");
       return;
     }
     router.refresh();
@@ -1268,16 +1245,6 @@ export function ScheduleGridPanel({
 
   return (
     <div>
-      {error ? (
-        <div className="alert alert-danger py-2" role="alert">
-          {error}
-        </div>
-      ) : null}
-      {info ? (
-        <div className="alert alert-success py-2" role="status">
-          {info}
-        </div>
-      ) : null}
       {canManageSchedule || canEdit ? (
         <div className="mb-3 d-flex justify-content-end gap-2 flex-wrap">
           {canManageSchedule && scheduleStatus === "ARCHIVED" ? (

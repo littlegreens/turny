@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useAppToast } from "@/components/app-toast-provider";
 
 type Props = {
   calId: string;
@@ -10,6 +11,7 @@ type Props = {
 
 export function ScheduleCreateForm({ calId, canCreate }: Props) {
   const router = useRouter();
+  const { showToast } = useAppToast();
   const now = new Date();
   const [periodType, setPeriodType] = useState<"MONTHLY" | "WEEKLY" | "CUSTOM">("MONTHLY");
   const [year, setYear] = useState(now.getFullYear());
@@ -17,13 +19,11 @@ export function ScheduleCreateForm({ calId, canCreate }: Props) {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!canCreate) return;
     setLoading(true);
-    setError(null);
 
     const response = await fetch(`/api/calendars/${calId}/schedules`, {
       method: "POST",
@@ -32,7 +32,7 @@ export function ScheduleCreateForm({ calId, canCreate }: Props) {
     });
     const payload = (await response.json()) as { error?: string };
     if (!response.ok) {
-      setError(payload.error ?? "Creazione bozza non riuscita");
+      showToast("error", payload.error ?? "Creazione bozza non riuscita");
       setLoading(false);
       return;
     }
@@ -95,7 +95,6 @@ export function ScheduleCreateForm({ calId, canCreate }: Props) {
           {loading ? "Creazione..." : "Crea turno"}
         </button>
       </div>
-      {error ? <p className="text-danger small mb-0">{error}</p> : null}
     </form>
   );
 }

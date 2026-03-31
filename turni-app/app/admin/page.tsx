@@ -31,24 +31,23 @@ export default async function SuperAdminPage() {
       <section className="card">
         <div className="card-body p-4">
           <h2 className="h5 fw-bold mb-3">Organizzazioni ({orgs.length})</h2>
-          <div className="row g-3">
+          <ul className="list-unstyled d-grid gap-2 mb-0">
             {orgs.map((o) => (
-              <div key={o.id} className="col-12 col-md-6 col-xl-4">
-                <AdminOrgCard
-                  org={{
-                    id: o.id,
-                    slug: o.slug,
-                    name: o.name,
-                    description: o.description ?? null,
-                    plan: String(o.plan),
-                    createdAt: o.createdAt.toISOString().slice(0, 10),
-                    calendarCount: o._count.calendars,
-                    memberCount: o._count.members,
-                  }}
-                />
-              </div>
+              <AdminOrgCard
+                key={o.id}
+                org={{
+                  id: o.id,
+                  slug: o.slug,
+                  name: o.name,
+                  description: o.description ?? null,
+                  plan: String(o.plan),
+                  createdAt: o.createdAt.toISOString().slice(0, 10),
+                  calendarCount: o._count.calendars,
+                  memberCount: o._count.members,
+                }}
+              />
             ))}
-          </div>
+          </ul>
         </div>
       </section>
     </div>

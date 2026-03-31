@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAppToast } from "@/components/app-toast-provider";
 
 type MemberOpt = { id: string; label: string; professionalRole: string };
 
@@ -22,6 +23,7 @@ type Props = {
 
 export function CalendarCoPresenceRulesPanel({ calId, canEdit, initialCalendarRules, members }: Props) {
   const router = useRouter();
+  const { showToast } = useAppToast();
   const initial = (initialCalendarRules ?? {}) as { coPresenceRules?: unknown };
   const [rules, setRules] = useState<RuleDraft[]>(() => {
     const list = Array.isArray(initial.coPresenceRules) ? initial.coPresenceRules : [];
@@ -46,7 +48,6 @@ export function CalendarCoPresenceRulesPanel({ calId, canEdit, initialCalendarRu
   });
 
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
@@ -82,7 +83,6 @@ export function CalendarCoPresenceRulesPanel({ calId, canEdit, initialCalendarRu
   }
 
   function open(ruleId: string | null) {
-    setError(null);
     if (!ruleId) {
       setEditingId(null);
       setName("");
@@ -108,7 +108,6 @@ export function CalendarCoPresenceRulesPanel({ calId, canEdit, initialCalendarRu
 
   async function persist(nextRules: RuleDraft[]) {
     setLoading(true);
-    setError(null);
     try {
       const base = (initialCalendarRules ?? {}) as Record<string, unknown>;
       const next = {
@@ -128,14 +127,14 @@ export function CalendarCoPresenceRulesPanel({ calId, canEdit, initialCalendarRu
       });
       const payload = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) {
-        setError(payload.error ?? "Salvataggio non riuscito");
+        showToast("error", payload.error ?? "Salvataggio non riuscito");
         return false;
       }
       setRules(nextRules);
       router.refresh();
       return true;
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      showToast("error", e instanceof Error ? e.message : String(e));
       return false;
     } finally {
       setLoading(false);
@@ -156,8 +155,6 @@ export function CalendarCoPresenceRulesPanel({ calId, canEdit, initialCalendarRu
             Aggiungi regola
           </button>
         </div>
-
-        {error ? <div className="alert alert-danger py-2 mt-3 mb-0">{error}</div> : null}
 
         {rules.length === 0 ? (
           <p className="small text-secondary mt-3 mb-0">Non ci sono regole.</p>

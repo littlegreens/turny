@@ -27,7 +27,10 @@ export function CalendarShiftTypesPanel({ calendarId, canEdit, shiftTypes }: Pro
     <>
       <h2 className="h5 fw-semibold mb-2">Tipi di turno</h2>
       {shiftTypes.length === 0 ? (
-        <p className="text-secondary mt-3 mb-0">Nessun turno configurato.</p>
+        <div className="alert alert-light border mt-3 mb-0" role="status">
+          <div className="fw-semibold mb-1">Nessun turno configurato.</div>
+          <div className="small text-secondary">Aggiungi almeno un tipo di turno per attivare la pianificazione del calendario.</div>
+        </div>
       ) : (
         <ul className="list-unstyled mt-3 d-grid gap-2">
           {shiftTypes.map((shiftType) => (

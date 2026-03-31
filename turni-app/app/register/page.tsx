@@ -59,7 +59,7 @@ export default function RegisterPage() {
     <main className="container py-5 d-flex flex-column justify-content-center" style={{ minHeight: "100vh", maxWidth: 560 }}>
       <h1 className="display-6 fw-bold">Crea il tuo account</h1>
       <p className="text-secondary">
-        Onboarding iniziale: dopo il login creeremo anche Organization e slug.
+        Completa i dati iniziali della tua organizzazione. Dopo il login troverai subito il tuo workspace.
       </p>
 
       <form
@@ -123,7 +123,7 @@ export default function RegisterPage() {
             required
           />
         </div>
-        {error ? <p className="text-danger small">{error}</p> : null}
+        {error ? <div className="alert alert-danger py-2 small" role="alert">{error}</div> : null}
         <button
           type="submit"
           disabled={loading}

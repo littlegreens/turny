@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useAppToast } from "@/components/app-toast-provider";
 import { ConfirmModal } from "@/components/confirm-modal";
 
 type Props = {
@@ -54,6 +55,7 @@ function statusLabel(status: Props["schedule"]["status"]) {
 
 export function OrgTurnListItem({ orgSlug, schedule, canEdit }: Props) {
   const router = useRouter();
+  const { showToast } = useAppToast();
   const [editing, setEditing] = useState(false);
   const initial = periodFromLog(schedule);
   const [periodType, setPeriodType] = useState<"MONTHLY" | "WEEKLY" | "CUSTOM">(initial.type as "MONTHLY" | "WEEKLY" | "CUSTOM");
@@ -63,14 +65,12 @@ export function OrgTurnListItem({ orgSlug, schedule, canEdit }: Props) {
   const [endDate, setEndDate] = useState("endDate" in initial ? (initial.endDate ?? "") : "");
   const [status, setStatus] = useState<"DRAFT" | "PUBLISHED">(schedule.status === "PUBLISHED" ? "PUBLISHED" : "DRAFT");
   const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   async function save() {
     try {
       setSaving(true);
-      setSaveError(null);
       const endResolved =
         periodType === "WEEKLY" && startDate ? addDays(startDate, 6) : endDate;
       const requestBody: Record<string, unknown> = {
@@ -92,13 +92,13 @@ export function OrgTurnListItem({ orgSlug, schedule, canEdit }: Props) {
       });
       const result = (await response.json()) as { error?: string };
       if (!response.ok) {
-        setSaveError(result.error ?? "Salvataggio non riuscito");
+        showToast("error", result.error ?? "Salvataggio non riuscito");
         return;
       }
       setEditing(false);
       router.refresh();
     } catch {
-      setSaveError("Errore di rete durante il salvataggio");
+      showToast("error", "Errore di rete durante il salvataggio");
     } finally {
       setSaving(false);
     }
@@ -198,7 +198,6 @@ export function OrgTurnListItem({ orgSlug, schedule, canEdit }: Props) {
                       <button className="btn btn-sm btn-success" onClick={() => void save()} disabled={saving}>Salva</button>
                       <button className="btn btn-sm btn-outline-success" onClick={() => setEditing(false)} disabled={saving}>Annulla</button>
                     </div>
-                    {saveError ? <div className="col-12 small text-danger">{saveError}</div> : null}
                   </div>
                 </div>
               </div>

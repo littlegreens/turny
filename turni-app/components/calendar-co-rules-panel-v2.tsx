@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ConfirmModal } from "@/components/confirm-modal";
+import { useAppToast } from "@/components/app-toast-provider";
 
 const DOW_LABELS = ["Domenica", "Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato"];
 
@@ -26,9 +27,8 @@ type Props = { calId: string; canEdit: boolean; initialCalendarRules: unknown; m
 
 export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, members }: Props) {
   const router = useRouter();
+  const { showToast } = useAppToast();
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [info, setInfo] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
@@ -112,7 +112,6 @@ export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, m
   }
 
   function openModal(ruleId: string | null) {
-    setError(null);
     if (!ruleId) {
       setEditingId(null);
       setName("");
@@ -138,8 +137,6 @@ export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, m
 
   async function persist(nextRules: RuleDraft[], nextDowRules?: DowRuleDraft[], nextRestDays?: number) {
     setLoading(true);
-    setError(null);
-    setInfo(null);
     try {
       const prev = (initialCalendarRules ?? {}) as Record<string, unknown>;
       const dows = nextDowRules ?? dowRules;
@@ -171,17 +168,18 @@ export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, m
       let payload: { error?: string } = {};
       try { payload = JSON.parse(rawText) as { error?: string }; } catch { /* not json */ }
       if (!res.ok) {
-        setError(payload.error ?? `Errore ${res.status}`);
+        showToast("error", payload.error ?? `Errore ${res.status}`);
         return false;
       }
       setRules(nextRules);
       if (nextDowRules) setDowRules(nextDowRules);
       if (nextRestDays !== undefined) setRestDaysAfterNight(nextRestDays);
-      setInfo("Configurazione calendario salvata.");
+      showToast("success", "Configurazione calendario salvata.");
       router.refresh();
       return true;
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const msg = e instanceof Error ? e.message : String(e);
+      showToast("error", msg || "Salvataggio non riuscito.");
       return false;
     } finally {
       setLoading(false);
@@ -258,8 +256,6 @@ export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, m
         <p className="small text-secondary mb-0">
           Regole generali di co-presenza e esclusione, valide per tutti i periodi di questo calendario.
         </p>
-        {error ? <div className="alert alert-danger py-2 mt-3 mb-0">{error}</div> : null}
-        {info ? <div className="alert alert-success py-2 mt-3 mb-0">{info}</div> : null}
 
         {rules.length === 0 ? (
           <div className="mt-3 d-flex justify-content-between align-items-center">
@@ -310,7 +306,6 @@ export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, m
                   <button type="button" className="btn-close" aria-label="Chiudi" onClick={() => setModalOpen(false)} />
                 </div>
                 <div className="modal-body pb-4">
-                  {error ? <div className="alert alert-danger py-2">{error}</div> : null}
                   <div className="row g-3">
                     {/* Nome */}
                     <div className="col-12">

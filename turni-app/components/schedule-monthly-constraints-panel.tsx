@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
+import { useAppToast } from "@/components/app-toast-provider";
 import { ConfirmModal } from "@/components/confirm-modal";
 
 type Props = {
@@ -19,11 +20,11 @@ function formatDate(date: string) {
 
 export function ScheduleMonthlyConstraintsPanel({ scheduleId, year, month, members, constraints, canEdit }: Props) {
   const router = useRouter();
+  const { showToast } = useAppToast();
   const [memberId, setMemberId] = useState(members[0]?.id ?? "");
   const [date, setDate] = useState(`${year}-${String(month).padStart(2, "0")}-01`);
   const [note, setNote] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const selectedDelete = useMemo(() => constraints.find((c) => c.id === deleteId) ?? null, [constraints, deleteId]);
 
@@ -31,7 +32,6 @@ export function ScheduleMonthlyConstraintsPanel({ scheduleId, year, month, membe
     event.preventDefault();
     if (!canEdit) return;
     setLoading(true);
-    setError(null);
     const response = await fetch(`/api/schedules/${scheduleId}/monthly-constraints`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -39,7 +39,7 @@ export function ScheduleMonthlyConstraintsPanel({ scheduleId, year, month, membe
     });
     const payload = (await response.json()) as { error?: string };
     if (!response.ok) {
-      setError(payload.error ?? "Salvataggio non riuscito");
+      showToast("error", payload.error ?? "Salvataggio non riuscito");
       setLoading(false);
       return;
     }
@@ -82,7 +82,6 @@ export function ScheduleMonthlyConstraintsPanel({ scheduleId, year, month, membe
             <div className="col-md-2 d-flex justify-content-md-end">
               <button className="btn btn-success" type="submit" disabled={!canEdit || loading}>Aggiungi</button>
             </div>
-            {error ? <p className="text-danger small mb-0">{error}</p> : null}
           </form>
         </div>
       </section>

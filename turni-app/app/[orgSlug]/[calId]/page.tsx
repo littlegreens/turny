@@ -91,7 +91,7 @@ export default async function CalendarDetailPage({ params }: Props) {
       />
       <h2 className="h2 fw-bold mt-3 mb-1">Calendario: {calendar.name}</h2>
       <p className="text-secondary mb-3">
-        {calendar.description || "Nessuna descrizione"} - {calendar.timezone}
+        {calendar.description || "Nessuna descrizione"} · Timezone: {calendar.timezone}
       </p>
       <section className="card mt-3">
         <div className="card-body">

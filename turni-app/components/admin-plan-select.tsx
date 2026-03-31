@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useAppToast } from "@/components/app-toast-provider";
 
 const PLANS = ["FREE", "STARTER", "PRO", "ENTERPRISE"] as const;
 type PlanValue = (typeof PLANS)[number];
@@ -11,15 +12,14 @@ type Props = {
 };
 
 export function AdminPlanSelect({ orgId, initialPlan }: Props) {
+  const { showToast } = useAppToast();
   const initial = (PLANS.includes(initialPlan as PlanValue) ? (initialPlan as PlanValue) : "FREE") satisfies PlanValue;
   const [plan, setPlan] = useState<PlanValue>(initial);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   async function save(next: PlanValue) {
     setPlan(next);
     setSaving(true);
-    setError(null);
     try {
       const res = await fetch(`/api/admin/orgs/${orgId}`, {
         method: "PATCH",
@@ -28,10 +28,10 @@ export function AdminPlanSelect({ orgId, initialPlan }: Props) {
       });
       const payload = (await res.json()) as { error?: string };
       if (!res.ok) {
-        setError(payload.error ?? `Errore HTTP ${res.status}`);
+        showToast("error", payload.error ?? `Errore HTTP ${res.status}`);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      showToast("error", e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
     }
@@ -53,7 +53,6 @@ export function AdminPlanSelect({ orgId, initialPlan }: Props) {
         ))}
       </select>
       {saving ? <span className="small text-secondary">Salvo…</span> : null}
-      {error ? <span className="small text-danger">{error}</span> : null}
     </div>
   );
 }

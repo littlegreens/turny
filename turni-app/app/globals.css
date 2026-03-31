@@ -58,6 +58,93 @@ body {
   font-weight: 600;
 }
 
+.turny-desktop-sidebar-shell {
+  transition: width 220ms ease;
+  overflow: hidden;
+}
+
+.turny-sidebar-label {
+  transition: opacity 160ms ease;
+}
+
+.turny-sidebar-toggle-btn {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: #111111;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.turny-sidebar-toggle-btn:hover {
+  background: #f2f3f5;
+}
+
+.turny-toggle-icon {
+  width: 18px;
+  height: 14px;
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.turny-toggle-line {
+  width: 18px;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+  transition: transform 190ms ease, opacity 160ms ease;
+  transform-origin: center;
+}
+
+.turny-toggle-icon.is-open .turny-toggle-line:nth-child(1) {
+  transform: translateY(6px) rotate(45deg);
+}
+
+.turny-toggle-icon.is-open .turny-toggle-line:nth-child(2) {
+  opacity: 0;
+}
+
+.turny-toggle-icon.is-open .turny-toggle-line:nth-child(3) {
+  transform: translateY(-6px) rotate(-45deg);
+}
+
+.turny-mobile-sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 280px;
+  max-width: calc(100vw - 56px);
+  height: 100vh;
+  background: #ffffff;
+  transform: translateX(-100%);
+  transition: transform 220ms ease;
+  will-change: transform;
+}
+
+.turny-mobile-sidebar.is-open {
+  transform: translateX(0);
+}
+
+.turny-mobile-sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  border: 0;
+  background: rgba(16, 24, 40, 0.35);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 180ms ease;
+}
+
+.turny-mobile-sidebar-backdrop.is-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 /* Home: header fixed deve allinearsi alla sidebar su lg+ */
 @media (min-width: 992px) {
   .home-with-sidebar .home-topbar {
@@ -75,24 +162,14 @@ body {
   background-color: transparent;
 }
 
-:focus:not([data-focus-mouse="true"]) {
-  outline: none !important;
-  border-color: inherit !important;
+/* Focus visibile coerente (accessibilita keyboard-first). */
+:where(a, button, input, select, textarea, .btn, [tabindex]):focus-visible {
+  outline: 2px solid #1f7a3f !important;
+  outline-offset: 2px;
   box-shadow: none !important;
 }
 
-*:focus,
-*:focus-visible,
-input:focus,
-input:focus-visible,
-select:focus,
-select:focus-visible,
-textarea:focus,
-textarea:focus-visible,
-button:focus,
-button:focus-visible,
-.btn:focus,
-.btn:focus-visible {
+:where(a, button, input, select, textarea, .btn, [tabindex]):focus:not(:focus-visible) {
   outline: none !important;
   box-shadow: none !important;
 }
@@ -296,4 +373,11 @@ textarea:focus::placeholder {
 
 .turny-modal .modal-body {
   padding: 1rem;
+}
+
+/* Uniformita alert in tutto il progetto */
+.alert {
+  border-radius: 0 !important;
+  font-family: var(--font-titillium), Arial, Helvetica, sans-serif;
+  line-height: 1.35;
 }

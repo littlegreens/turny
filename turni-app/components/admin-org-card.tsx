@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useAppToast } from "@/components/app-toast-provider";
 
 const PLANS = ["FREE", "STARTER", "PRO", "ENTERPRISE"] as const;
 type PlanValue = (typeof PLANS)[number];
@@ -20,16 +22,16 @@ type Props = {
 };
 
 export function AdminOrgCard({ org }: Props) {
+  const router = useRouter();
+  const { showToast } = useAppToast();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(org.name);
   const [description, setDescription] = useState(org.description ?? "");
   const [plan, setPlan] = useState<PlanValue>((PLANS.includes(org.plan as PlanValue) ? (org.plan as PlanValue) : "FREE"));
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   async function save() {
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch(`/api/admin/orgs/${org.id}`, {
         method: "PATCH",
@@ -38,11 +40,12 @@ export function AdminOrgCard({ org }: Props) {
       });
       const payload = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) {
-        setError(payload.error ?? "Salvataggio non riuscito");
+        showToast("error", payload.error ?? "Salvataggio non riuscito");
         return;
       }
       setOpen(false);
-      window.location.reload();
+      showToast("success", "Società aggiornata.");
+      router.refresh();
     } finally {
       setLoading(false);
     }
@@ -50,21 +53,23 @@ export function AdminOrgCard({ org }: Props) {
 
   return (
     <>
-      <div className="card h-100">
-        <div className="card-body d-flex flex-column gap-2">
-          <div className="d-flex justify-content-between align-items-start gap-2">
+      <li className="border rounded p-3">
+        <div className="d-flex justify-content-between align-items-center gap-3 flex-wrap">
+          <div className="d-flex align-items-start gap-3 flex-grow-1">
+            <span
+              className="rounded-circle border mt-1"
+              style={{ backgroundColor: "#1f7a3f", width: 14, height: 14, flex: "0 0 14px" }}
+              aria-hidden="true"
+            />
             <div>
-              <h3 className="h6 fw-bold mb-1">{org.name}</h3>
-              <div className="small text-secondary">/{org.slug}</div>
+              <p className="fw-semibold mb-0">{org.name}</p>
+              <p className="small text-secondary mb-0">
+                /{org.slug} · Piano: {org.plan} · Calendari: {org.calendarCount} · Membri: {org.memberCount}
+              </p>
+              <p className="small text-secondary mb-0">{org.description?.trim() || "Nessuna descrizione."}</p>
             </div>
-            <span className="badge text-bg-light border">{org.plan}</span>
           </div>
-          <p className="small text-secondary mb-1">{org.description?.trim() || "Nessuna descrizione."}</p>
-          <div className="small text-secondary">
-            Calendari: <strong>{org.calendarCount}</strong> · Membri: <strong>{org.memberCount}</strong>
-          </div>
-          <div className="small text-secondary">Creata: {org.createdAt}</div>
-          <div className="mt-2 d-flex gap-2">
+          <div className="d-flex gap-2">
             <button type="button" className="btn btn-sm btn-outline-success" onClick={() => setOpen(true)}>
               Modifica
             </button>
@@ -73,7 +78,7 @@ export function AdminOrgCard({ org }: Props) {
             </Link>
           </div>
         </div>
-      </div>
+      </li>
 
       {open ? (
         <>
@@ -85,7 +90,6 @@ export function AdminOrgCard({ org }: Props) {
                   <button type="button" className="btn-close" onClick={() => setOpen(false)} />
                 </div>
                 <div className="modal-body">
-                  {error ? <div className="alert alert-danger py-2">{error}</div> : null}
                   <div className="mb-3">
                     <label className="form-label small mb-1">Nome</label>
                     <input className="form-control" value={name} onChange={(e) => setName(e.target.value)} disabled={loading} />

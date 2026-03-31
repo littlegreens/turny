@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useAppToast } from "@/components/app-toast-provider";
 
 type CalendarOption = { id: string; name: string };
 
@@ -23,6 +24,7 @@ const MONTH_OPTIONS = Array.from({ length: 12 }, (_, idx) => {
 
 export function OrgTurnCreateForm({ orgSlug, calendars, canCreate, onCreated }: Props) {
   const router = useRouter();
+  const { showToast } = useAppToast();
   const now = new Date();
   const [calendarId, setCalendarId] = useState(calendars[0]?.id ?? "");
   const [periodType, setPeriodType] = useState<"MONTHLY" | "WEEKLY" | "CUSTOM">("MONTHLY");
@@ -31,7 +33,6 @@ export function OrgTurnCreateForm({ orgSlug, calendars, canCreate, onCreated }: 
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   function addDays(dateIso: string, days: number) {
     const d = new Date(`${dateIso}T00:00:00.000Z`);
@@ -43,7 +44,6 @@ export function OrgTurnCreateForm({ orgSlug, calendars, canCreate, onCreated }: 
     event.preventDefault();
     if (!canCreate || !calendarId) return;
     setLoading(true);
-    setError(null);
 
     const requestPayload =
       periodType === "MONTHLY"
@@ -63,7 +63,7 @@ export function OrgTurnCreateForm({ orgSlug, calendars, canCreate, onCreated }: 
     setLoading(false);
 
     if (!response.ok || !payload.schedule?.id) {
-      setError(payload.error ?? "Creazione turno non riuscita");
+      showToast("error", payload.error ?? "Creazione turno non riuscita");
       return;
     }
 
@@ -164,7 +164,6 @@ export function OrgTurnCreateForm({ orgSlug, calendars, canCreate, onCreated }: 
           {loading ? "Creazione..." : "Crea turno"}
         </button>
       </div>
-      {error ? <p className="text-danger small mb-0 mt-2">{error}</p> : null}
     </form>
   );
 }

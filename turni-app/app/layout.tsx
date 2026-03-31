@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Sue_Ellen_Francisco, Titillium_Web } from "next/font/google";
 import "bootstrap-italia/dist/css/bootstrap-italia.min.css";
 import "./globals.css";
+import { AppToastProvider } from "@/components/app-toast-provider";
 
 const titillium = Titillium_Web({
   variable: "--font-titillium",
@@ -30,7 +31,9 @@ export default function RootLayout({
       lang="it"
       className={`${titillium.variable} ${sueEllen.variable} h-full antialiased`}
     >
-      <body className="min-h-full d-flex flex-column">{children}</body>
+      <body className="min-h-full d-flex flex-column">
+        <AppToastProvider>{children}</AppToastProvider>
+      </body>
     </html>
   );
 }

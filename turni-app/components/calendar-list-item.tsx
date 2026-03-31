@@ -16,6 +16,7 @@ type Props = {
     isActive: boolean;
     description: string | null;
     activeWeekdays: number[];
+    _count?: { shiftTypes: number };
   };
   canEdit: boolean;
 };
@@ -57,7 +58,7 @@ export function CalendarListItem({ orgSlug, calendar, canEdit }: Props) {
         <div className="w-100">
           <p className="fw-semibold mb-0">{calendar.name}</p>
           <p className="small text-secondary mb-0">
-            {calendar.timezone} — giorni attivi definiti su ogni tipo turno (Configura)
+            {(calendar.description?.trim() || "Nessuna descrizione")} · Tipologie turno: {calendar._count?.shiftTypes ?? 0}
           </p>
         </div>
       </div>

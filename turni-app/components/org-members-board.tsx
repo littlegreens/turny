@@ -66,24 +66,31 @@ export function OrgMembersBoard({
       <section className="card mt-3">
         <div className="card-body">
           <h2 className="h5 fw-semibold mb-2">Elenco membri</h2>
-          <ul className="list-unstyled mt-3 d-grid gap-2">
-            {members.map((item) => (
-              <OrgMemberItem
-                key={item.id}
-                member={item}
-                myUserId={myUserId}
-                canEditRole={canEditRole}
-                canRemove={canManage}
-                canAssignAdmin={canAssignAdmin}
-                allCalendars={allCalendars}
-                assignedCalendars={calendarsByUser[item.userId] ?? []}
-                professionalRoleSuggestions={professionalRoleSuggestions}
-              />
-            ))}
-          </ul>
+          {members.length === 0 ? (
+            <div className="alert alert-light border mt-3 mb-0" role="status">
+              <div className="fw-semibold mb-1">Nessun membro presente.</div>
+              <div className="small text-secondary">Aggiungi il primo membro per iniziare ad assegnare ruoli e calendari.</div>
+            </div>
+          ) : (
+            <ul className="list-unstyled mt-3 d-grid gap-2">
+              {members.map((item) => (
+                <OrgMemberItem
+                  key={item.id}
+                  member={item}
+                  myUserId={myUserId}
+                  canEditRole={canEditRole}
+                  canRemove={canManage}
+                  canAssignAdmin={canAssignAdmin}
+                  allCalendars={allCalendars}
+                  assignedCalendars={calendarsByUser[item.userId] ?? []}
+                  professionalRoleSuggestions={professionalRoleSuggestions}
+                />
+              ))}
+            </ul>
+          )}
           <div className="mt-3 d-flex justify-content-end">
             <button className="btn btn-success" onClick={() => setOpenCreate(true)} disabled={!canManage}>
-              Crea nuovo membro
+              Aggiungi membro
             </button>
           </div>
         </div>

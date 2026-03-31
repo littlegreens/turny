@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useAppToast } from "@/components/app-toast-provider";
 import { ProfessionalRoleInput } from "@/components/professional-role-input";
 
 type Props = {
@@ -12,6 +13,7 @@ type Props = {
 };
 
 export function OrgMemberCreateForm({ orgSlug, canManage, canAssignAdmin, professionalRoleSuggestions }: Props) {
+  const { showToast } = useAppToast();
   const roleLabel: Record<string, string> = {
     ADMIN: "RESPONSABILE",
     MANAGER: "MANAGER",
@@ -26,7 +28,6 @@ export function OrgMemberCreateForm({ orgSlug, canManage, canAssignAdmin, profes
   const [password, setPassword] = useState("");
   const [roles, setRoles] = useState<string[]>(["WORKER"]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   function toggleRole(role: string) {
     if (roles.includes(role)) {
@@ -41,7 +42,6 @@ export function OrgMemberCreateForm({ orgSlug, canManage, canAssignAdmin, profes
     event.preventDefault();
     if (!canManage) return;
     setLoading(true);
-    setError(null);
 
     const response = await fetch(`/api/orgs/${orgSlug}/members`, {
       method: "POST",
@@ -51,7 +51,7 @@ export function OrgMemberCreateForm({ orgSlug, canManage, canAssignAdmin, profes
 
     const payload = (await response.json()) as { error?: string };
     if (!response.ok) {
-      setError(payload.error ?? "Invito non riuscito");
+      showToast("error", payload.error ?? "Invito non riuscito");
       setLoading(false);
       return;
     }
@@ -154,7 +154,6 @@ export function OrgMemberCreateForm({ orgSlug, canManage, canAssignAdmin, profes
           {loading ? "Creazione..." : "Crea membro"}
         </button>
       </div>
-      {error ? <p className="text-danger small mb-0">{error}</p> : null}
       {!canManage ? <p className="small text-secondary mb-0">Non hai permessi per gestire membri.</p> : null}
     </form>
   );

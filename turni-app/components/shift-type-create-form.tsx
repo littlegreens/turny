@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useAppToast } from "@/components/app-toast-provider";
 import { ColorPalettePicker } from "@/components/color-palette-picker";
 
 type Props = {
@@ -12,20 +13,19 @@ type Props = {
 
 export function ShiftTypeCreateForm({ calId, canCreate, onCreated }: Props) {
   const router = useRouter();
+  const { showToast } = useAppToast();
   const [name, setName] = useState("");
   const [startTime, setStartTime] = useState("07:00");
   const [endTime, setEndTime] = useState("14:00");
   const [minStaff, setMinStaff] = useState(1);
   const [color, setColor] = useState("#E1F5EE");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!canCreate) return;
 
     setLoading(true);
-    setError(null);
 
     const response = await fetch(`/api/calendars/${calId}/shift-types`, {
       method: "POST",
@@ -42,7 +42,7 @@ export function ShiftTypeCreateForm({ calId, canCreate, onCreated }: Props) {
     const payload = (await response.json()) as { error?: string };
 
     if (!response.ok) {
-      setError(payload.error ?? "Creazione turno non riuscita");
+      showToast("error", payload.error ?? "Creazione turno non riuscita");
       setLoading(false);
       return;
     }
@@ -111,7 +111,6 @@ export function ShiftTypeCreateForm({ calId, canCreate, onCreated }: Props) {
           {loading ? "Creazione..." : "Aggiungi turno"}
         </button>
       </div>
-      {error ? <p className="text-danger small col-12">{error}</p> : null}
       {!canCreate ? <p className="small text-secondary col-12">Il tuo ruolo non puo` creare turni.</p> : null}
     </form>
   );

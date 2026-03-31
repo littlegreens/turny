@@ -45,6 +45,9 @@ export default async function OrgCalendarsPage({ params }: Props) {
       ? { orgId: org.id, id: { in: assignedCalendarIds.length ? assignedCalendarIds : ["__none__"] } }
       : { orgId: org.id },
     orderBy: { createdAt: "desc" },
+    include: {
+      _count: { select: { shiftTypes: true } },
+    },
   });
   const canCreateCalendar = hasAnyRole(effectiveRoles, ["OWNER", "ADMIN"]);
 

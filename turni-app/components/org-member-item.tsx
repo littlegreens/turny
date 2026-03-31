@@ -6,6 +6,7 @@ import { useBeforeUnloadWhen } from "@/hooks/use-unsaved-prompt";
 import { ColorPalettePicker } from "@/components/color-palette-picker";
 import { ConfirmModal } from "@/components/confirm-modal";
 import { ProfessionalRoleInput } from "@/components/professional-role-input";
+import { useAppToast } from "@/components/app-toast-provider";
 import { formatWeekdays, WEEKDAY_OPTIONS } from "@/lib/weekdays";
 
 type Props = {
@@ -51,6 +52,7 @@ export function OrgMemberItem({
   assignedCalendars,
 }: Props) {
   const router = useRouter();
+  const { showToast } = useAppToast();
   const [editOpen, setEditOpen] = useState(false);
   const [firstName, setFirstName] = useState(member.user.firstName || "");
   const [lastName, setLastName] = useState(member.user.lastName || "");
@@ -89,7 +91,6 @@ export function OrgMemberItem({
   const [avoidShiftQuery, setAvoidShiftQuery] = useState<Record<string, string>>({});
   const [openAvoidShiftFor, setOpenAvoidShiftFor] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [discardEditOpen, setDiscardEditOpen] = useState(false);
@@ -133,7 +134,6 @@ export function OrgMemberItem({
     setEditOpen(false);
     setDiscardEditOpen(false);
     setOpenWeekdayPickerFor(null);
-    setSaveError(null);
   }
 
   function openEdit() {
@@ -185,7 +185,6 @@ export function OrgMemberItem({
     setManagedCalendarIds(managedCalN);
     setRowColor(rowN);
     setCalendarPrefs(prefsN);
-    setSaveError(null);
     setEditOpen(true);
   }
 
@@ -201,7 +200,6 @@ export function OrgMemberItem({
   async function save() {
     if (!canEditRole) return;
     setLoading(true);
-    setSaveError(null);
     const res = await fetch(`/api/org-members/${member.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -246,11 +244,12 @@ export function OrgMemberItem({
     setLoading(false);
     if (!res.ok) {
       const payload = (await res.json().catch(() => ({}))) as { error?: string };
-      setSaveError(payload.error ?? "Salvataggio non riuscito");
+      showToast("error", payload.error ?? "Salvataggio non riuscito");
       return;
     }
     tryCloseEdit(true);
     setPassword("");
+    showToast("success", "Membro aggiornato.");
     router.refresh();
   }
 
@@ -317,7 +316,7 @@ export function OrgMemberItem({
         <div>
           <p className="fw-semibold mb-0">{`${member.user.firstName} ${member.user.lastName}`.trim() || member.user.email}</p>
           <p className="small text-secondary mb-0">
-            @{member.user.name || member.user.email.split("@")[0]} - {member.user.email} - {roles.map((role) => roleLabel[role] ?? role).join(", ")}
+            @{member.user.name || member.user.email.split("@")[0]} · {member.user.email} · {roles.map((role) => roleLabel[role] ?? role).join(", ")}
           </p>
           {professionalRole ? <p className="small text-secondary mb-0">{professionalRole}</p> : null}
           <p className="small text-secondary mb-0 mt-1">
@@ -405,7 +404,7 @@ export function OrgMemberItem({
             <div className="col-12">
               <label className="form-label small mb-1 d-block">Assegna calendari al manager</label>
               <p className="small text-secondary mb-2">
-                Questi calendari definiscono dove il manager puo accedere e creare turni.
+                Questi calendari definiscono dove il manager può accedere e creare turni.
               </p>
               <div className="d-flex flex-wrap gap-2">
                 {allCalendars.map((cal) => {
@@ -433,8 +432,7 @@ export function OrgMemberItem({
                 Preferenze base per calendario
               </p>
               <p className="small text-secondary mb-2">
-                Ogni calendario ha il suo blocco: il <strong>tipo di periodo</strong> dei turni (mensile, settimanale o intervallo date) lo definisci quando crei il periodo in quel calendario, non qui.
-                Qui salvi solo preferenze di base sulla persona per quel calendario.
+                Qui imposti solo le preferenze base della persona per questo calendario.
               </p>
               {assignedCalendars.length === 0 ? (
                 <p className="small text-secondary mb-0">Nessun calendario associato.</p>
@@ -619,7 +617,6 @@ export function OrgMemberItem({
               Annulla
             </button>
           </div>
-          {saveError ? <p className="small text-danger mb-0">{saveError}</p> : null}
         </div>
                 </div>
               </div>

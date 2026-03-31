@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { ConfirmModal } from "@/components/confirm-modal";
+import { useAppToast } from "@/components/app-toast-provider";
 
 type Assigned = {
   calendarMemberId: string;
@@ -27,9 +28,9 @@ type Props = {
 
 export function CalendarMembersPanel({ calId, canEdit, assigned, available }: Props) {
   const router = useRouter();
+  const { showToast } = useAppToast();
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [removeId, setRemoveId] = useState<string | null>(null);
 
   const filteredAvailable = useMemo(() => {
@@ -44,7 +45,6 @@ export function CalendarMembersPanel({ calId, canEdit, assigned, available }: Pr
   async function addMember(userId: string) {
     if (!canEdit || !userId) return;
     setLoading(true);
-    setError(null);
     const res = await fetch(`/api/calendars/${calId}/members`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -53,7 +53,7 @@ export function CalendarMembersPanel({ calId, canEdit, assigned, available }: Pr
     const payload = (await res.json()) as { error?: string };
     setLoading(false);
     if (!res.ok) {
-      setError(payload.error ?? "Errore");
+      showToast("error", payload.error ?? "Aggiunta non riuscita");
       return;
     }
     setQuery("");
@@ -63,13 +63,12 @@ export function CalendarMembersPanel({ calId, canEdit, assigned, available }: Pr
   async function confirmRemove() {
     if (!removeId) return;
     setLoading(true);
-    setError(null);
     const res = await fetch(`/api/calendar-members/${removeId}`, { method: "DELETE" });
     const payload = (await res.json()) as { error?: string };
     setLoading(false);
     setRemoveId(null);
     if (!res.ok) {
-      setError(payload.error ?? "Errore");
+      showToast("error", payload.error ?? "Rimozione non riuscita");
       return;
     }
     router.refresh();
@@ -79,19 +78,13 @@ export function CalendarMembersPanel({ calId, canEdit, assigned, available }: Pr
 
   return (
     <div>
-      {error ? (
-        <div className="alert alert-danger py-2" role="alert">
-          {error}
-        </div>
-      ) : null}
-
       <p className="small text-secondary mb-2">
         Le persone devono essere membri dell&apos;organizzazione; qui le colleghi solo a questo calendario.
       </p>
 
       {canEdit && available.length > 0 ? (
         <div className="position-relative mb-3">
-          <label className="form-label small mb-1">Aggiungi persona (autocomplete)</label>
+          <label className="form-label small mb-1">Aggiungi persona</label>
           <input
             type="text"
             className="form-control form-control-sm input-underlined"
@@ -145,7 +138,9 @@ export function CalendarMembersPanel({ calId, canEdit, assigned, available }: Pr
       ) : null}
 
       {assigned.length === 0 ? (
-        <p className="text-secondary small mb-2">Nessuna persona associata a questo calendario.</p>
+        <div className="alert alert-light border small mb-2" role="status">
+          Nessuna persona associata a questo calendario.
+        </div>
       ) : (
         <div className="d-flex flex-wrap gap-2 mb-2">
           {assigned.map((a) => (

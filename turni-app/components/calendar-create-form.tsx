@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useAppToast } from "@/components/app-toast-provider";
 import { ColorPalettePicker } from "@/components/color-palette-picker";
 
 type Props = {
@@ -12,18 +13,17 @@ type Props = {
 
 export function CalendarCreateForm({ orgSlug, canCreate, onCreated }: Props) {
   const router = useRouter();
+  const { showToast } = useAppToast();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [color, setColor] = useState("#3B8BD4");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!canCreate) return;
 
     setLoading(true);
-    setError(null);
 
     const response = await fetch(`/api/orgs/${orgSlug}/calendars`, {
       method: "POST",
@@ -39,7 +39,7 @@ export function CalendarCreateForm({ orgSlug, canCreate, onCreated }: Props) {
     const payload = (await response.json()) as { error?: string };
 
     if (!response.ok) {
-      setError(payload.error ?? "Creazione calendario non riuscita");
+      showToast("error", payload.error ?? "Creazione calendario non riuscita");
       setLoading(false);
       return;
     }
@@ -88,7 +88,6 @@ export function CalendarCreateForm({ orgSlug, canCreate, onCreated }: Props) {
           {loading ? "Creazione..." : "Crea calendario"}
         </button>
       </div>
-      {error ? <p className="text-danger small col-12">{error}</p> : null}
       {!canCreate ? (
         <p className="small text-secondary col-12">
           Il tuo ruolo non puo` creare calendari.

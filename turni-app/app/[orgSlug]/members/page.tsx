@@ -144,7 +144,7 @@ export default async function OrgMembersPage({ params }: Props) {
 
   const effectiveRoles = membership ? normalizeRoles([membership.role, ...membership.roles]) : ["OWNER", "ADMIN"];
   if (!hasAnyRole(effectiveRoles, ["OWNER", "ADMIN", "MANAGER"])) {
-    redirect(`/${membership.org.slug}/turni`);
+    redirect(`/${orgSlug}/turni`);
   }
   const canManage = effectiveRoles.some((r) => ["OWNER", "ADMIN", "MANAGER"].includes(r));
   const canEditRole = effectiveRoles.some((r) => ["OWNER", "ADMIN", "MANAGER"].includes(r));
@@ -163,7 +163,7 @@ export default async function OrgMembersPage({ params }: Props) {
 
       <h2 className="h2 fw-bold mt-3">Membri</h2>
       <p className="text-secondary mb-0">
-        Gestisci ruoli e persone dell&apos;organizzazione; l&apos;abbinamento ai singoli calendari resta nella pagina di ciascun calendario.
+        Gestisci persone e ruoli dell&apos;organizzazione. Per i manager puoi assegnare direttamente i calendari dalla scheda membro.
       </p>
 
       <OrgMembersBoard

@@ -48,7 +48,7 @@ export default async function OrgSettingsPage({ params }: Props) {
       />
       <h2 className="h2 fw-bold mt-3">Impostazioni</h2>
       <p className="text-secondary">
-        Configura i parametri principali dell&apos;organizzazione <strong>{org.name}</strong>.
+        Aggiorna i dati principali dell&apos;organizzazione <strong>{org.name}</strong>.
       </p>
       <OrgSettingsForm orgSlug={org.slug} initialName={org.name} initialDescription={org.description ?? ""} />
     </>
