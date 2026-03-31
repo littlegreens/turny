@@ -70,6 +70,7 @@ export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, m
   const [restDaysAfterNight, setRestDaysAfterNight] = useState<number>(() => {
     const raw = (initialCalendarRules ?? {}) as { rest_days_after_night?: unknown };
     const v = Number(raw.rest_days_after_night ?? 1);
+    if (v === 0) return 0;
     return v >= 2 ? 2 : 1;
   });
   const [dowModalOpen, setDowModalOpen] = useState(false);
@@ -252,18 +253,22 @@ export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, m
     <>
     <section className="card mt-3 border-success border-opacity-50">
       <div className="card-body">
-        <h2 className="h5 fw-semibold mb-2">Vincoli persone/ruolo</h2>
+        <h4 className="mb-2">Vincoli persone/ruolo</h4>
         <p className="small text-secondary mb-0">
-          Regole generali di co-presenza e esclusione, valide per tutti i periodi di questo calendario.
+          Regole generali di co-presenza o esclusione tra persone.
         </p>
 
         {rules.length === 0 ? (
-          <div className="mt-3 d-flex justify-content-between align-items-center">
+          <>
+          <div className="mt-3 border rounded p-3">
             <p className="small text-secondary mb-0">Non ci sono regole.</p>
+          </div>
+          <div className="mt-3">
             <button className="btn btn-success" type="button" onClick={() => openModal(null)} disabled={!canEdit || loading}>
-              Aggiungi regola persona/ruolo
+              Aggiungi regola
             </button>
           </div>
+          </>
         ) : (
           <div className="d-grid gap-2 mt-3">
             {rules.map((r) => (
@@ -273,7 +278,7 @@ export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, m
                   <div className="small text-secondary mt-1">{ruleDescription(r)}</div>
                 </div>
                 <div className="d-flex gap-2 flex-shrink-0">
-                  <button type="button" className="btn btn-sm btn-outline-success" onClick={() => openModal(r.id)} disabled={loading}>
+                  <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => openModal(r.id)} disabled={loading}>
                     Modifica
                   </button>
                   <button
@@ -289,7 +294,7 @@ export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, m
             ))}
             <div className="d-flex justify-content-end">
               <button className="btn btn-success" type="button" onClick={() => openModal(null)} disabled={!canEdit || loading}>
-                Aggiungi regola persona/ruolo
+                Aggiungi regola
               </button>
             </div>
           </div>
@@ -389,9 +394,9 @@ export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, m
     {/* ── Regole giorno + flag smonto/riposo ────────────────── */}
     <section className="card mt-3 border-success border-opacity-50">
       <div className="card-body">
-        <h2 className="h5 fw-semibold mb-1">Vincoli giorni</h2>
+        <h4 className="mb-1">Vincoli giorni</h4>
         <p className="small text-secondary mb-3">
-          Collega i giorni della settimana: "se lavora il sabato, lavora/non lavora la domenica". Valido per tutti i membri del calendario.
+          Vincola le presenze settimanali per giorno esempio: "se lavora il sabato, lavora/non lavora la domenica". Valido per tutti i membri del calendario.
         </p>
 
         {/* Flag smonto/riposo */}
@@ -402,7 +407,7 @@ export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, m
           </div>
           <select
             className="form-select form-select-sm"
-            style={{ maxWidth: 180 }}
+            style={{ width: "auto" }}
             value={restDaysAfterNight}
             onChange={(e) => {
               const v = Number(e.target.value);
@@ -410,6 +415,7 @@ export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, m
             }}
             disabled={!canEdit || loading}
           >
+            <option value={0}>Nessuno (nessun riposo obbligatorio)</option>
             <option value={1}>1 giorno (smonto)</option>
             <option value={2}>2 giorni (smonto + riposo)</option>
           </select>
@@ -417,11 +423,13 @@ export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, m
 
         {/* Lista regole giorno */}
         {dowRules.length === 0 ? (
-          <p className="small text-secondary mb-2">Non ci sono regole giorno.</p>
+          <div className="border rounded p-3 mb-3">
+            <p className="small text-secondary mb-0">Non ci sono regole giorno.</p>
+          </div>
         ) : (
           <div className="d-flex flex-column gap-2 mb-3">
             {dowRules.map((r) => (
-              <div key={r.id} className="border rounded p-2 d-flex justify-content-between align-items-start">
+              <div key={r.id} className="border rounded p-3 d-flex justify-content-between align-items-start">
                 <div>
                   <div className="fw-semibold small">{r.name}</div>
                   <div className="small text-secondary">
@@ -471,7 +479,7 @@ export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, m
               setDowModalOpen(true);
             }}
           >
-            Aggiungi regola giorno
+            Aggiungi regola
           </button>
         </div>
       </div>
@@ -576,18 +584,6 @@ export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, m
         })();
       }}
     />
-    <div className="d-flex justify-content-end mt-3">
-      <button
-        type="button"
-        className="btn btn-success"
-        disabled={!canEdit || loading}
-        onClick={() => {
-          void persist(rules, dowRules, restDaysAfterNight);
-        }}
-      >
-        Salva
-      </button>
-    </div>
     </>
   );
 }

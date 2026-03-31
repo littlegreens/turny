@@ -46,7 +46,7 @@ export default async function OrgSettingsPage({ params }: Props) {
           { label: "Impostazioni" },
         ]}
       />
-      <h2 className="h2 fw-bold mt-3">Impostazioni</h2>
+      <h2 className="h2 mt-3">Impostazioni</h2>
       <p className="text-secondary">
         Aggiorna i dati principali dell&apos;organizzazione <strong>{org.name}</strong>.
       </p>

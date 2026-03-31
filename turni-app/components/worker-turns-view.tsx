@@ -278,7 +278,7 @@ export function WorkerTurnsView({
                 <div className="border rounded-3 p-3 mb-3 bg-light">
                   <p className="small fw-semibold mb-1">Colore nella griglia</p>
                   <p className="small text-secondary mb-2">
-                    Di base il colore è quello impostato sulla scheda membro dall&apos;organizzazione. Qui puoi definire un colore
+                    Di base il colore è quello impostato sulla scheda persona dall&apos;organizzazione. Qui puoi definire un colore
                     solo per questo calendario (sovrascrive il default nei turni di questa squadra).
                   </p>
                   <ColorPalettePicker value={effectiveColor} onChange={(hex) => setMyColorDraft(hex)} disabled={colorSaving} label="Colore persona" />

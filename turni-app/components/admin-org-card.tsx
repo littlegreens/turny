@@ -64,13 +64,13 @@ export function AdminOrgCard({ org }: Props) {
             <div>
               <p className="fw-semibold mb-0">{org.name}</p>
               <p className="small text-secondary mb-0">
-                /{org.slug} · Piano: {org.plan} · Calendari: {org.calendarCount} · Membri: {org.memberCount}
+                /{org.slug} · Piano: {org.plan} · Calendari: {org.calendarCount} · Persone: {org.memberCount}
               </p>
               <p className="small text-secondary mb-0">{org.description?.trim() || "Nessuna descrizione."}</p>
             </div>
           </div>
           <div className="d-flex gap-2">
-            <button type="button" className="btn btn-sm btn-outline-success" onClick={() => setOpen(true)}>
+            <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setOpen(true)}>
               Modifica
             </button>
             <Link href={`/${org.slug}`} className="btn btn-sm btn-success">

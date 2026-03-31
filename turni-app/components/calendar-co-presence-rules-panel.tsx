@@ -167,7 +167,7 @@ export function CalendarCoPresenceRulesPanel({ calId, canEdit, initialCalendarRu
                   <div className="small text-secondary">{r.kind === "ALWAYS_WITH" ? "Deve stare con" : "Non deve stare con"}</div>
                 </div>
                 <div className="d-flex gap-2">
-                  <button type="button" className="btn btn-sm btn-outline-success" onClick={() => open(r.id)} disabled={loading}>
+                  <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => open(r.id)} disabled={loading}>
                     Modifica
                   </button>
                   <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => void persist(rules.filter((x) => x.id !== r.id))} disabled={!canEdit || loading}>

@@ -21,7 +21,7 @@ export default async function SuperAdminPage() {
         <div className="card-body p-4">
           <div className="d-flex justify-content-between align-items-start gap-3 flex-wrap">
             <div>
-              <h1 className="h3 fw-bold mb-1">Super admin</h1>
+              <h1 className="h3 mb-1">Super admin</h1>
               <p className="text-secondary mb-0">Gestione multi-societa: entra nel workspace di ogni organizzazione.</p>
             </div>
           </div>
@@ -30,7 +30,7 @@ export default async function SuperAdminPage() {
 
       <section className="card">
         <div className="card-body p-4">
-          <h2 className="h5 fw-bold mb-3">Organizzazioni ({orgs.length})</h2>
+          <h2 className="h5 mb-3">Organizzazioni ({orgs.length})</h2>
           <ul className="list-unstyled d-grid gap-2 mb-0">
             {orgs.map((o) => (
               <AdminOrgCard

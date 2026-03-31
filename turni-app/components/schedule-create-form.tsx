@@ -92,7 +92,7 @@ export function ScheduleCreateForm({ calId, canCreate }: Props) {
       )}
       <div className="col-md-3 d-flex justify-content-md-start">
         <button className="btn btn-success" type="submit" disabled={!canCreate || loading}>
-          {loading ? "Creazione..." : "Crea turno"}
+          {loading ? "Creazione..." : "Aggiungi turno"}
         </button>
       </div>
     </form>

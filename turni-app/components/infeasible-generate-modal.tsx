@@ -55,7 +55,7 @@ export function InfeasibleGenerateModal({ open, onClose, message, hints, orgSlug
                     </div>
                     <div className="col-6 col-md-4">
                       <div className="border rounded p-2 h-100 bg-light">
-                        <div className="text-secondary">Membri team</div>
+                        <div className="text-secondary">Persone team</div>
                         <div className="fw-bold">{hints.stats.teamMembers}</div>
                       </div>
                     </div>
@@ -95,8 +95,8 @@ export function InfeasibleGenerateModal({ open, onClose, message, hints, orgSlug
                       <p className="mb-2 text-secondary mb-0">
                         Se il collo di bottiglia è <strong>quantitativo</strong> (servono più assegnazioni di quante i massimali
                         consentono), annota quanti turni extra servono e quali persone possono farli. Poi, nel calendario:
-                        aumenta il massimale mensile su quei membri, oppure segnali come <strong>jolly</strong> chi accetta di
-                        essere usato con priorità più bassa per riempire i buchi. Se mancano proprio le persone, aggiungi membri
+                        aumenta il massimale mensile su quelle persone, oppure segnali come <strong>jolly</strong> chi accetta di
+                        essere usato con priorità più bassa per riempire i buchi. Se mancano proprio le persone, aggiungi persone
                         o abbassa il minimo di copertura sui tipi turno.
                       </p>
                     </div>
@@ -105,13 +105,13 @@ export function InfeasibleGenerateModal({ open, onClose, message, hints, orgSlug
               ) : (
                 <p className="small text-secondary mb-0">
                   Controlla coperture minime, indisponibilità del periodo, massimali contrattuali e regole di riposo sul calendario
-                  e sui singoli membri.
+                  e sulle singole persone.
                 </p>
               )}
 
               <div className="mt-3">
                 <Link href={calHref} className="btn btn-sm btn-success" onClick={onClose}>
-                  Apri il calendario (membri, tipi turno, regole)
+                  Apri il calendario (persone, tipi turno, regole)
                 </Link>
               </div>
             </div>

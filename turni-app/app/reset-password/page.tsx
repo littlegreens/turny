@@ -102,7 +102,7 @@ function ResetPasswordForm() {
 export default function ResetPasswordPage() {
   return (
     <main className="container py-5 d-flex flex-column justify-content-center" style={{ minHeight: "100vh", maxWidth: 560 }}>
-      <h1 className="display-6 fw-bold">Nuova password</h1>
+      <h1 className="display-6">Nuova password</h1>
       <p className="text-secondary">Scegli una password di almeno 8 caratteri.</p>
 
       <Suspense fallback={<p className="text-secondary">Caricamento...</p>}>

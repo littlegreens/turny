@@ -22,6 +22,10 @@ type Props = {
   canEdit: boolean;
 };
 
+function colorWithAlpha(hex: string, alphaHex = "1f") {
+  return /^#[0-9A-Fa-f]{6}$/.test(hex) ? `${hex}${alphaHex}` : "#1f7a3f1f";
+}
+
 export function ShiftTypeItem({ shiftType, canEdit }: Props) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
@@ -71,25 +75,22 @@ export function ShiftTypeItem({ shiftType, canEdit }: Props) {
   }
 
   return (
-    <li className="border rounded p-3">
+    <li className="rounded p-3" style={{ border: `1px solid ${shiftType.color}`, backgroundColor: colorWithAlpha(shiftType.color) }}>
       <div className="d-flex justify-content-between align-items-center">
-        <div className="d-flex align-items-center gap-3">
-          <span className="rounded-circle border" style={{ width: 16, height: 16, backgroundColor: shiftType.color }} />
-          <div>
-            <p className="fw-semibold mb-0">{shiftType.name}</p>
-            <p className="small text-secondary mb-0">
-              {shiftType.startTime} - {shiftType.endTime} ({shiftType.durationHours}h)
-            </p>
-            <p className="small text-secondary mb-0">
-              {formatWeekdays(shiftType.activeWeekdays ?? [1, 2, 3, 4, 5])}
-            </p>
-          </div>
+        <div>
+          <p className="fw-semibold mb-0">{shiftType.name}</p>
+          <p className="small text-secondary mb-0">
+            {shiftType.startTime} - {shiftType.endTime} ({shiftType.durationHours}h)
+          </p>
+          <p className="small text-secondary mb-0">
+            {formatWeekdays(shiftType.activeWeekdays ?? [1, 2, 3, 4, 5])}
+          </p>
         </div>
         <div className="d-flex align-items-center gap-2">
           <span className="small text-secondary">min staff: {shiftType.minStaff}</span>
           {canEdit ? (
             <>
-              <button className="btn btn-sm btn-outline-success" onClick={() => setEditing(true)}>
+              <button className="btn btn-sm btn-outline-secondary" onClick={() => setEditing(true)}>
                 Modifica
               </button>
               <button className="btn btn-sm btn-outline-danger" onClick={() => setDeleteOpen(true)}>
@@ -108,7 +109,7 @@ export function ShiftTypeItem({ shiftType, canEdit }: Props) {
                   <h5 className="modal-title">Modifica turno</h5>
                   <button type="button" className="btn-close" aria-label="Chiudi" onClick={() => setEditing(false)} />
                 </div>
-                <div className="modal-body">
+                <div className="modal-body pb-3">
                   <div className="row g-2 align-items-end">
                     <div className="col-12 col-md-6">
                       <label className="form-label small mb-1">Nome</label>

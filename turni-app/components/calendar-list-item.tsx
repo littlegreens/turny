@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, type DragEvent } from "react";
 import { ConfirmModal } from "@/components/confirm-modal";
 import { ColorPalettePicker } from "@/components/color-palette-picker";
 
@@ -16,12 +16,32 @@ type Props = {
     isActive: boolean;
     description: string | null;
     activeWeekdays: number[];
-    _count?: { shiftTypes: number };
+    _count?: { shiftTypes: number; members: number };
   };
   canEdit: boolean;
+  canReorder?: boolean;
+  isDragging?: boolean;
+  onDragStart?: () => void;
+  onDragOver?: (event: DragEvent<HTMLLIElement>) => void;
+  onDrop?: () => void;
+  onDragEnd?: () => void;
 };
 
-export function CalendarListItem({ orgSlug, calendar, canEdit }: Props) {
+function colorWithAlpha(hex: string, alphaHex = "1f") {
+  return /^#[0-9A-Fa-f]{6}$/.test(hex) ? `${hex}${alphaHex}` : "#1f7a3f1f";
+}
+
+export function CalendarListItem({
+  orgSlug,
+  calendar,
+  canEdit,
+  canReorder = false,
+  isDragging = false,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  onDragEnd,
+}: Props) {
   const router = useRouter();
   const [editOpen, setEditOpen] = useState(false);
   const [name, setName] = useState(calendar.name);
@@ -52,26 +72,38 @@ export function CalendarListItem({ orgSlug, calendar, canEdit }: Props) {
   }
 
   return (
-    <li className="d-flex align-items-center justify-content-between border rounded p-3">
+    <li
+      className="d-flex align-items-center justify-content-between rounded p-3"
+      style={{ border: `1px solid ${calendar.color}`, backgroundColor: colorWithAlpha(calendar.color), opacity: isDragging ? 0.65 : 1 }}
+      draggable={canReorder}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      onDragEnd={onDragEnd}
+    >
       <div className="d-flex align-items-center gap-3 flex-grow-1">
-        <span className="rounded-circle border" style={{ backgroundColor: calendar.color, width: 16, height: 16 }} />
+        {canReorder ? (
+          <span className="text-secondary" style={{ cursor: "grab", userSelect: "none", fontSize: 18, lineHeight: 1 }} aria-hidden="true" title="Trascina per ordinare">
+            ⋮⋮
+          </span>
+        ) : null}
         <div className="w-100">
           <p className="fw-semibold mb-0">{calendar.name}</p>
+          <p className="small text-secondary mb-1">{calendar.description?.trim() || "Nessuna descrizione"}</p>
           <p className="small text-secondary mb-0">
-            {(calendar.description?.trim() || "Nessuna descrizione")} · Tipologie turno: {calendar._count?.shiftTypes ?? 0}
+            Persone associate: {calendar._count?.members ?? 0} · Fasce orarie: {calendar._count?.shiftTypes ?? 0}
           </p>
         </div>
       </div>
       <div className="d-flex align-items-center gap-2">
-        <span className="small text-secondary">{calendar.isActive ? "Attivo" : "Disattivo"}</span>
+        <Link className="btn btn-sm btn-success" href={`/${orgSlug}/${calendar.id}`}>
+          Configura
+        </Link>
         {canEdit ? (
           <>
-            <button className="btn btn-sm btn-outline-success" onClick={() => setEditOpen(true)}>
+            <button className="btn btn-sm btn-outline-secondary" onClick={() => setEditOpen(true)}>
               Modifica
             </button>
-            <Link className="btn btn-sm btn-outline-success" href={`/${orgSlug}/${calendar.id}`}>
-              Configura
-            </Link>
             <button className="btn btn-sm btn-outline-danger" onClick={() => setDeleteOpen(true)}>
               Elimina
             </button>
@@ -112,11 +144,11 @@ export function CalendarListItem({ orgSlug, calendar, canEdit }: Props) {
                       <ColorPalettePicker value={color} onChange={setColor} disabled={saving} />
                     </div>
                     <div className="col-12 d-flex justify-content-end gap-2">
-                      <button className="btn btn-success" onClick={() => void save()} disabled={saving}>
-                        {saving ? "Salvataggio..." : "Salva"}
-                      </button>
-                      <button className="btn btn-outline-success" onClick={() => setEditOpen(false)} disabled={saving}>
+                      <button className="btn btn-outline-secondary" onClick={() => setEditOpen(false)} disabled={saving}>
                         Annulla
+                      </button>
+                      <button className="btn btn-success" onClick={() => void save()} disabled={saving}>
+                        {saving ? "Salvataggio..." : "Salva modifiche"}
                       </button>
                     </div>
                   </div>

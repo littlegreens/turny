@@ -76,14 +76,14 @@ export function buildInfeasibilityHints(input: {
   if (teamMembers === 0) {
     suggestions.push({
       id: "no-members",
-      title: "Nessun membro attivo",
+      title: "Nessuna persona attiva",
       body: "Aggiungi persone al calendario prima di generare.",
     });
   } else if (maxMinStaffOnSingleSlot > teamMembers) {
     suggestions.push({
       id: "min-staff-exceeds-team",
       title: "«Min staff» più alto del numero di persone",
-      body: `Almeno un tipo turno richiede ${maxMinStaffOnSingleSlot} persone contemporaneamente, ma nel team ci sono solo ${teamMembers} membri attivi. Riduci il minimo richiesto o aggiungi persone.`,
+      body: `Almeno un tipo turno richiede ${maxMinStaffOnSingleSlot} persone contemporaneamente, ma nel team ci sono solo ${teamMembers} persone attive. Riduci il minimo richiesto o aggiungi persone.`,
     });
   }
 
@@ -91,7 +91,7 @@ export function buildInfeasibilityHints(input: {
     suggestions.push({
       id: "sum-caps",
       title: "Massimali turni mensili (somma)",
-      body: `Per coprire i minimi mancanti servono almeno ${slotsToCover} assegnazioni nuove nel periodo, ma la somma dei massimali contrattuali mensili impostati sui membri è ${sumContractMaxShifts}. Aumenta i massimali dove possibile, rimuovi un tetto su chi può fare di più, o riduci i requisiti di copertura.`,
+      body: `Per coprire i minimi mancanti servono almeno ${slotsToCover} assegnazioni nuove nel periodo, ma la somma dei massimali contrattuali mensili impostati sulle persone è ${sumContractMaxShifts}. Aumenta i massimali dove possibile, rimuovi un tetto su chi può fare di più, o riduci i requisiti di copertura.`,
     });
   }
 
@@ -105,8 +105,8 @@ export function buildInfeasibilityHints(input: {
       id: "jolly",
       title: "Persone «jolly» (copertura extra)",
       body:
-        "Il generatore penalizza leggermente chi è marcato «jolly» quando distribuisce i turni. Se alcune persone possono accettare straordinari o turni extra, segnale come jolly nella scheda membro del calendario: libera capacità utile quando il piano è molto stretto." +
-        (sample ? ` Esempi di membri non jolly: ${sample}.` : ""),
+        "Il generatore penalizza leggermente chi è marcato «jolly» quando distribuisce i turni. Se alcune persone possono accettare straordinari o turni extra, segnale come jolly nella scheda persona del calendario: libera capacità utile quando il piano è molto stretto." +
+        (sample ? ` Esempi di persone non jolly: ${sample}.` : ""),
     });
   }
 
@@ -127,7 +127,7 @@ export function buildInfeasibilityHints(input: {
   suggestions.push({
     id: "rest-consecutive",
     title: "Riposi, notti e giorni consecutivi",
-    body: "Se il problema non è solo «quanti» turni ma «come» combinarli, controlla regole calendario (riposo dopo notte), giorni consecutivi massimi e ore minime tra turni sui singoli membri: possono rendere impossibile un piano anche con abbastanza persone in teoria.",
+    body: "Se il problema non è solo «quanti» turni ma «come» combinarli, controlla regole calendario (riposo dopo notte), giorni consecutivi massimi e ore minime tra turni sulle singole persone: possono rendere impossibile un piano anche con abbastanza persone in teoria.",
   });
 
   return {

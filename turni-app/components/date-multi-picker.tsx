@@ -30,6 +30,11 @@ function formatDateIt(iso: string) {
 const monthFmt = new Intl.DateTimeFormat("it-IT", { month: "long", year: "numeric" });
 const WEEKDAYS = ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
 
+function capitalizeFirst(value: string) {
+  if (!value) return value;
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
 export function DateMultiPicker({ selectedDates, onChange, allowedDates, triggerLabel }: Props) {
   const allowedSet = useMemo(() => (allowedDates?.length ? new Set(allowedDates) : null), [allowedDates]);
 
@@ -126,7 +131,7 @@ export function DateMultiPicker({ selectedDates, onChange, allowedDates, trigger
             >
               ‹
             </button>
-            <strong className="text-capitalize small">{monthFmt.format(viewMonth)}</strong>
+            <strong className="small">{capitalizeFirst(monthFmt.format(viewMonth))}</strong>
             <button
               type="button"
               className="btn btn-sm btn-outline-success"

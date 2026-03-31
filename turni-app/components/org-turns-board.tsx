@@ -9,6 +9,7 @@ type TurnRow = {
   id: string;
   calendarId: string;
   calendarName: string;
+  calendarColor: string;
   year: number;
   month: number;
   status: "DRAFT" | "PUBLISHED" | "ARCHIVED";
@@ -27,11 +28,7 @@ export function OrgTurnsBoard({ orgSlug, canCreate, calendars, turnsByCalendar }
 
   return (
     <>
-      <div className="d-flex justify-content-between align-items-start gap-3 mt-3 mb-2 flex-wrap">
-        <div>
-          <h2 className="h2 fw-bold mb-1">Turni</h2>
-          <p className="text-secondary mb-0">Monitora e gestisci i turni attivi, organizzati per calendario.</p>
-        </div>
+      <div className="d-flex justify-content-end mt-3 mb-2">
         <Link href={`/${orgSlug}/archivio-turni`} className="btn btn-outline-secondary">
           Archivio turni
         </Link>
@@ -40,12 +37,15 @@ export function OrgTurnsBoard({ orgSlug, canCreate, calendars, turnsByCalendar }
       <section className="card">
         <div className="card-body">
           {turnsByCalendar.length === 0 ? (
-            <p className="text-secondary mb-0">Nessun turno attivo.</p>
+            <div className="border rounded p-4 text-center" role="status">
+              <p className="fw-semibold mb-1">Nessun piano turni attivo</p>
+              <p className="small text-secondary mb-0">Crea il primo piano turni selezionando un calendario e un periodo.</p>
+            </div>
           ) : (
             <div className="d-grid gap-3">
               {turnsByCalendar.map((group) => (
                 <div key={group.calendarId}>
-                  <h2 className="h6 fw-semibold mb-2">{group.calendarName}</h2>
+                  <h3 className="mb-2">{group.calendarName}</h3>
                   <ul className="list-unstyled d-grid gap-2 mb-0">
                     {group.turns.map((turn) => (
                       <OrgTurnListItem key={turn.id} orgSlug={orgSlug} schedule={turn} canEdit={canCreate} />

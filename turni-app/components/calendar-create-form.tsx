@@ -85,7 +85,7 @@ export function CalendarCreateForm({ orgSlug, canCreate, onCreated }: Props) {
           disabled={!canCreate || loading}
           className="btn btn-success"
         >
-          {loading ? "Creazione..." : "Crea calendario"}
+          {loading ? "Creazione..." : "Aggiungi calendario"}
         </button>
       </div>
       {!canCreate ? (

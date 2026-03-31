@@ -46,7 +46,7 @@ export async function PATCH(request: Request, { params }: Params) {
 
   const { memberId } = await params;
   const target = await prisma.orgMember.findUnique({ where: { id: memberId } });
-  if (!target) return NextResponse.json({ error: "Membro non trovato" }, { status: 404 });
+  if (!target) return NextResponse.json({ error: "Persona non trovata" }, { status: 404 });
 
   const actor = await prisma.orgMember.findFirst({
     where: { userId: session.user.id, orgId: target.orgId },
@@ -280,7 +280,7 @@ export async function DELETE(_: Request, { params }: Params) {
 
   const { memberId } = await params;
   const target = await prisma.orgMember.findUnique({ where: { id: memberId } });
-  if (!target) return NextResponse.json({ error: "Membro non trovato" }, { status: 404 });
+  if (!target) return NextResponse.json({ error: "Persona non trovata" }, { status: 404 });
 
   const actor = await prisma.orgMember.findFirst({
     where: { userId: session.user.id, orgId: target.orgId },

@@ -1,7 +1,8 @@
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
 import { AppBreadcrumbs } from "@/components/app-breadcrumbs";
-import { OrgMembersBoard } from "@/components/org-members-board";
+import { OrgMemberItem } from "@/components/org-member-item";
 import { authOptions } from "@/lib/auth";
 import { hasAnyRole, normalizeRoles } from "@/lib/org-roles";
 import { fetchOrgMemberDisplayColors } from "@/lib/org-member-display-colors";
@@ -10,14 +11,15 @@ import { prisma } from "@/lib/prisma";
 import { isSuperAdminEmail } from "@/lib/super-admin";
 
 type Props = {
-  params: Promise<{ orgSlug: string }>;
+  params: Promise<{ orgSlug: string; memberId: string }>;
 };
 
-export default async function OrgMembersPage({ params }: Props) {
+export default async function MemberDetailPage({ params }: Props) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) redirect("/login");
 
-  const { orgSlug } = await params;
+  const { orgSlug, memberId } = await params;
+
   const membership = await prisma.orgMember.findFirst({
     where: { userId: session.user.id, org: { slug: orgSlug } },
     include: { org: true },
@@ -27,26 +29,37 @@ export default async function OrgMembersPage({ params }: Props) {
   const orgId = membership?.orgId ?? (await prisma.organization.findUnique({ where: { slug: orgSlug }, select: { id: true } }))?.id;
   if (!orgId) notFound();
 
-  const members = await prisma.orgMember.findMany({
+  const effectiveRoles = membership ? normalizeRoles([membership.role, ...membership.roles]) : ["OWNER", "ADMIN"];
+  if (!hasAnyRole(effectiveRoles, ["OWNER", "ADMIN", "MANAGER"])) {
+    redirect(`/${orgSlug}/turni`);
+  }
+
+  const member = await prisma.orgMember.findUnique({
+    where: { id: memberId },
+    include: { user: { select: { id: true, email: true, name: true, firstName: true, lastName: true, professionalRole: true } } },
+  });
+  if (!member || member.orgId !== orgId) notFound();
+
+  const allMembers = await prisma.orgMember.findMany({
     where: { orgId },
     include: { user: { select: { id: true, email: true, name: true, firstName: true, lastName: true, professionalRole: true } } },
     orderBy: [{ role: "asc" }, { createdAt: "asc" }],
   });
+
   const allCalendars = await prisma.calendar.findMany({
     where: { orgId },
     select: { id: true, name: true, color: true },
     orderBy: { createdAt: "asc" },
   });
+
   const orgColorByUserId = new Map(
     (
-      await fetchOrgMemberDisplayColors(
-        orgId,
-        members.map((m) => m.userId),
-      )
+      await fetchOrgMemberDisplayColors(orgId, [member.userId])
     ).map((r) => [r.userId, r]),
   );
+
   const calendarMemberships = await prisma.calendarMember.findMany({
-    where: { calendar: { orgId } },
+    where: { calendar: { orgId }, userId: member.userId },
     select: {
       id: true,
       userId: true,
@@ -76,21 +89,8 @@ export default async function OrgMembersPage({ params }: Props) {
       },
     },
   });
-  const calendarsByUser = calendarMemberships.reduce<Record<string, {
-    id: string;
-    name: string;
-    color: string | null;
-    calendarMemberId: string;
-    shiftTypes: { id: string; name: string }[];
-    initialAvoidShiftTypeIds: string[];
-    initialTargetShiftsMonth: number | null;
-    initialTargetHoursMonth: number | null;
-    initialTargetNightsMonth: number | null;
-    initialTargetSaturdaysMonth: number | null;
-    initialTargetSundaysMonth: number | null;
-    initialAvoidWeekdays: number[];
-  }[]>>((acc, item) => {
-    if (!acc[item.userId]) acc[item.userId] = [];
+
+  const assignedCalendars = calendarMemberships.map((item) => {
     const avoidShiftTypeIds = item.constraints
       .filter((c) => c.type === "UNAVAILABLE_SHIFT")
       .map((c) => String((c.value as { shiftTypeId?: string } | undefined)?.shiftTypeId ?? ""))
@@ -116,7 +116,7 @@ export default async function OrgMembersPage({ params }: Props) {
       item.contractHoursMonth != null && Number.isFinite(item.contractHoursMonth)
         ? Math.round(item.contractHoursMonth)
         : null;
-    acc[item.userId].push({
+    return {
       id: item.calendarId,
       name: item.calendar.name,
       color: item.calendar.color,
@@ -138,59 +138,58 @@ export default async function OrgMembersPage({ params }: Props) {
           ? Number((targetSundays?.value as { sundays?: number }).sundays)
           : null,
       initialAvoidWeekdays: [...new Set(avoidWeekdays)],
-    });
-    return acc;
-  }, {});
+    };
+  });
 
-  const effectiveRoles = membership ? normalizeRoles([membership.role, ...membership.roles]) : ["OWNER", "ADMIN"];
-  if (!hasAnyRole(effectiveRoles, ["OWNER", "ADMIN", "MANAGER"])) {
-    redirect(`/${orgSlug}/turni`);
-  }
   const canManage = effectiveRoles.some((r) => ["OWNER", "ADMIN", "MANAGER"].includes(r));
-  const canEditRole = effectiveRoles.some((r) => ["OWNER", "ADMIN", "MANAGER"].includes(r));
+  const canEditRole = canManage;
   const canAssignAdmin = effectiveRoles.some((r) => ["OWNER", "ADMIN"].includes(r));
-
-  const professionalRoleSuggestions = distinctProfessionalRolesFromMembers(members);
+  const professionalRoleSuggestions = distinctProfessionalRolesFromMembers(allMembers);
+  const displayName = `${member.user.firstName} ${member.user.lastName}`.trim() || member.user.email;
 
   return (
     <>
       <AppBreadcrumbs
         items={[
           { label: "Home", href: "/" },
-          { label: "Persone" },
+          { label: "Persone", href: `/${orgSlug}/members` },
+          { label: displayName },
         ]}
       />
 
-      <h2 className="h2 mt-3">Persone</h2>
-      <p className="text-secondary mb-0">
-        Gestisci impostazioni, ruoli e preferenze delle persone.
+      <h2 className="h2 mt-3">{displayName}</h2>
+      <p className="text-secondary mb-3">
+        {member.user.email} · {(member.roles.length ? member.roles : [member.role]).join(", ")}
       </p>
 
-      <OrgMembersBoard
-        orgSlug={orgSlug}
-        myUserId={session.user.id}
-        professionalRoleSuggestions={professionalRoleSuggestions}
-        members={members.map((item) => ({
-          id: item.id,
-          role: item.role,
-          roles: item.roles,
-          userId: item.userId,
-          defaultDisplayColor: orgColorByUserId.get(item.userId)?.defaultDisplayColor ?? null,
-          useDisplayColorInCalendars: orgColorByUserId.get(item.userId)?.useDisplayColorInCalendars ?? true,
+      <OrgMemberItem
+        member={{
+          id: member.id,
+          role: member.role,
+          roles: member.roles,
+          userId: member.userId,
+          defaultDisplayColor: orgColorByUserId.get(member.userId)?.defaultDisplayColor ?? null,
+          useDisplayColorInCalendars: orgColorByUserId.get(member.userId)?.useDisplayColorInCalendars ?? true,
           user: {
-            email: item.user.email,
-            name: item.user.name,
-            firstName: item.user.firstName,
-            lastName: item.user.lastName,
-            professionalRole: item.user.professionalRole,
+            email: member.user.email,
+            name: member.user.name,
+            firstName: member.user.firstName,
+            lastName: member.user.lastName,
+            professionalRole: member.user.professionalRole,
           },
-        }))}
-        canManage={canManage}
+        }}
+        myUserId={session.user.id}
         canEditRole={canEditRole}
+        canRemove={canManage}
         canAssignAdmin={canAssignAdmin}
         allCalendars={allCalendars}
-        calendarsByUser={calendarsByUser}
+        assignedCalendars={assignedCalendars}
+        professionalRoleSuggestions={professionalRoleSuggestions}
+        pageMode
       />
+      <div className="mt-4">
+        <Link href={`/${orgSlug}/members`} className="turny-back-link">← Persone</Link>
+      </div>
     </>
   );
 }

@@ -93,7 +93,7 @@ export async function POST(request: Request, { params }: Params) {
     where: { id: parsed.data.memberId },
   });
   if (!member || member.calendarId !== access.schedule.calendarId) {
-    return NextResponse.json({ error: "Membro calendario non valido" }, { status: 400 });
+    return NextResponse.json({ error: "Persona calendario non valida" }, { status: 400 });
   }
 
   if (!isDateInSchedule(parsed.data.date, access.schedule)) {
@@ -135,7 +135,7 @@ export async function PUT(request: Request, { params }: Params) {
     where: { id: parsed.data.memberId },
   });
   if (!member || member.calendarId !== access.schedule.calendarId) {
-    return NextResponse.json({ error: "Membro calendario non valido" }, { status: 400 });
+    return NextResponse.json({ error: "Persona calendario non valida" }, { status: 400 });
   }
 
   for (const item of parsed.data.items) {

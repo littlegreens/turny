@@ -13,6 +13,7 @@ const isoDate = z
 const updateScheduleSchema = z.object({
   status: z.enum(["DRAFT", "PUBLISHED", "ARCHIVED"]).optional(),
   periodType: z.enum(["MONTHLY", "WEEKLY", "CUSTOM"]).optional(),
+  turnName: z.string().trim().min(2, "Nome turno troppo corto").max(120, "Nome turno troppo lungo").optional(),
   year: z.coerce.number().int().min(2000).max(2100).optional(),
   month: z.coerce.number().int().min(1).max(12).optional(),
   startDate: isoDate,
@@ -109,6 +110,7 @@ export async function PATCH(request: Request, { params }: Params) {
       ...(parsed.data.status === "DRAFT" ? { publishedAt: null, publishedBy: null } : {}),
       generationLog: {
         ...(currentMeta ?? {}),
+        ...(parsed.data.turnName ? { turnName: parsed.data.turnName } : {}),
         periodType: nextPeriodType,
         startDate: nextStartDate,
         endDate: nextEndDate,

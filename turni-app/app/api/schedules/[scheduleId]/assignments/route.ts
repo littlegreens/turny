@@ -53,7 +53,7 @@ export async function POST(request: Request, { params }: Params) {
   ]);
 
   if (!member || member.calendarId !== access.schedule.calendarId) {
-    return NextResponse.json({ error: "Membro calendario non valido" }, { status: 400 });
+    return NextResponse.json({ error: "Persona calendario non valida" }, { status: 400 });
   }
   if (!shiftType || shiftType.calendarId !== access.schedule.calendarId) {
     return NextResponse.json({ error: "Tipo turno non valido" }, { status: 400 });

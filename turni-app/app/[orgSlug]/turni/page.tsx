@@ -49,8 +49,11 @@ export default async function OrgTurnsPage({ params, searchParams }: Props) {
               { label: "Turni" },
             ]}
           />
-          <h2 className="h2 fw-bold mt-3">Turni</h2>
-          <p className="text-secondary mb-0">Non hai ancora calendari assegnati.</p>
+          <h2 className="h2 mt-3">Turni</h2>
+          <div className="border rounded p-4 text-center" role="status">
+            <p className="fw-semibold mb-1">Nessun calendario assegnato</p>
+            <p className="small text-secondary mb-0">Contatta l&apos;amministratore per essere aggiunto a un calendario.</p>
+          </div>
         </>
       );
     }
@@ -70,12 +73,12 @@ export default async function OrgTurnsPage({ params, searchParams }: Props) {
             { label: "Turni" },
           ]}
         />
-        <h2 className="h2 fw-bold mt-3">Turni</h2>
-        <p className="text-secondary mb-3">Vista sola lettura dei turni assegnati al tuo profilo.</p>
+        <h2 className="h2 mt-3">Turni</h2>
+        <p className="text-secondary mb-3">I turni assegnati al tuo profilo, in sola lettura.</p>
 
         {calendars.length > 1 ? (
           <form method="get" className="mb-3">
-            <label className="form-label small mb-1">Calendari</label>
+            <label className="form-label small mb-1">Calendario</label>
             <div className="d-flex gap-2 flex-wrap align-items-center">
               <select name="calendarId" defaultValue={selectedCalendarId} className="form-select" style={{ maxWidth: 280 }}>
                 {calendars.map((cal) => (
@@ -110,34 +113,13 @@ export default async function OrgTurnsPage({ params, searchParams }: Props) {
       ).map((m) => m.calendarId)
     : [];
 
-  const todayIso = new Date().toISOString().slice(0, 10);
-  const toArchive = await prisma.schedule.findMany({
-    where: {
-      calendar: { orgId: org.id },
-      status: { not: "ARCHIVED" },
-    },
-    select: { id: true, generationLog: true },
-  });
-  const archiveIds = toArchive
-    .filter((s) => {
-      const end = (s.generationLog as { endDate?: string } | null)?.endDate;
-      return Boolean(end && end < todayIso);
-    })
-    .map((s) => s.id);
-  if (archiveIds.length > 0) {
-    await prisma.schedule.updateMany({
-      where: { id: { in: archiveIds } },
-      data: { status: "ARCHIVED" },
-    });
-  }
-
   const schedules = await prisma.schedule.findMany({
     where: {
       calendar: { orgId: org.id },
       status: { not: "ARCHIVED" },
       ...(isManagerOnly ? { calendarId: { in: assignedCalendarIds } } : {}),
     },
-    include: { calendar: { select: { id: true, name: true } } },
+    include: { calendar: { select: { id: true, name: true, color: true, aiConfig: true } } },
     orderBy: [{ year: "desc" }, { month: "desc" }, { createdAt: "desc" }],
   });
   const calendars = await prisma.calendar.findMany({
@@ -146,21 +128,38 @@ export default async function OrgTurnsPage({ params, searchParams }: Props) {
       isActive: true,
       ...(isManagerOnly ? { id: { in: assignedCalendarIds } } : {}),
     },
-    select: { id: true, name: true },
-    orderBy: { name: "asc" },
+    select: { id: true, name: true, aiConfig: true, createdAt: true },
+    orderBy: { createdAt: "desc" },
+  });
+  const calendarsSorted = [...calendars].sort((a, b) => {
+    const ordA = typeof (a.aiConfig as { orderIndex?: number } | null)?.orderIndex === "number"
+      ? ((a.aiConfig as { orderIndex?: number }).orderIndex as number)
+      : Number.MAX_SAFE_INTEGER;
+    const ordB = typeof (b.aiConfig as { orderIndex?: number } | null)?.orderIndex === "number"
+      ? ((b.aiConfig as { orderIndex?: number }).orderIndex as number)
+      : Number.MAX_SAFE_INTEGER;
+    if (ordA !== ordB) return ordA - ordB;
+    return a.name.localeCompare(b.name, "it");
   });
   const canCreate = hasAnyRole(roles, ["OWNER", "ADMIN", "MANAGER"]);
 
-  const turnsByCalendarMap = new Map<string, { calendarId: string; calendarName: string; turns: { id: string; calendarId: string; calendarName: string; year: number; month: number; status: "DRAFT" | "PUBLISHED" | "ARCHIVED"; generationLog: unknown }[] }>();
+  const turnsByCalendarMap = new Map<string, { calendarId: string; calendarName: string; calendarOrder: number; turns: { id: string; calendarId: string; calendarName: string; calendarColor: string; year: number; month: number; status: "DRAFT" | "PUBLISHED" | "ARCHIVED"; generationLog: unknown }[] }>();
   for (const s of schedules) {
     const key = s.calendar.id;
+    const calendarOrder = (s.calendar.aiConfig as { orderIndex?: number } | null)?.orderIndex;
     if (!turnsByCalendarMap.has(key)) {
-      turnsByCalendarMap.set(key, { calendarId: s.calendar.id, calendarName: s.calendar.name, turns: [] });
+      turnsByCalendarMap.set(key, {
+        calendarId: s.calendar.id,
+        calendarName: s.calendar.name,
+        calendarOrder: typeof calendarOrder === "number" ? calendarOrder : Number.MAX_SAFE_INTEGER,
+        turns: [],
+      });
     }
     turnsByCalendarMap.get(key)!.turns.push({
       id: s.id,
       calendarId: s.calendar.id,
       calendarName: s.calendar.name,
+      calendarColor: s.calendar.color,
       year: s.year,
       month: s.month,
       status: s.status,
@@ -170,7 +169,7 @@ export default async function OrgTurnsPage({ params, searchParams }: Props) {
   const turnsByCalendar = [...turnsByCalendarMap.values()].map((g) => ({
     ...g,
     turns: g.turns.sort((a, b) => (a.year - b.year) || (a.month - b.month)),
-  }));
+  })).sort((a, b) => (a.calendarOrder - b.calendarOrder) || a.calendarName.localeCompare(b.calendarName, "it"));
 
   return (
     <>
@@ -180,7 +179,9 @@ export default async function OrgTurnsPage({ params, searchParams }: Props) {
           { label: "Turni" },
         ]}
       />
-      <OrgTurnsBoard orgSlug={org.slug} canCreate={canCreate} calendars={calendars} turnsByCalendar={turnsByCalendar} />
+      <h2 className="h2 mt-3">Turni</h2>
+      <p className="text-secondary mb-0">Gestisci i piani turni attivi, organizzati per calendario.</p>
+      <OrgTurnsBoard orgSlug={org.slug} canCreate={canCreate} calendars={calendarsSorted.map((c) => ({ id: c.id, name: c.name }))} turnsByCalendar={turnsByCalendar} />
     </>
   );
 }

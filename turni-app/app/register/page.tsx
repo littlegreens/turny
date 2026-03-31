@@ -57,7 +57,7 @@ export default function RegisterPage() {
 
   return (
     <main className="container py-5 d-flex flex-column justify-content-center" style={{ minHeight: "100vh", maxWidth: 560 }}>
-      <h1 className="display-6 fw-bold">Crea il tuo account</h1>
+      <h1 className="display-6">Crea il tuo account</h1>
       <p className="text-secondary">
         Completa i dati iniziali della tua organizzazione. Dopo il login troverai subito il tuo workspace.
       </p>
@@ -134,7 +134,7 @@ export default function RegisterPage() {
       </form>
 
       <p className="mt-3 text-secondary">
-        Hai gia` un account?{" "}
+        Hai già un account?{" "}
         <Link href="/login" className="link-dark">
           Accedi
         </Link>

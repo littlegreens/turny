@@ -54,11 +54,11 @@ export default async function ScheduleAvailabilityPage({ params }: Props) {
         items={[
           { label: "Home", href: "/" },
           { label: "Turni", href: `/${orgSlug}/turni` },
-          { label: "Disponibilita" },
+          { label: "Disponibilità" },
         ]}
       />
-      <h2 className="h2 fw-bold mt-3">Disponibilita mese - {String(schedule.month).padStart(2, "0")}/{schedule.year}</h2>
-      <p className="text-secondary mb-3">Inserisci indisponibilita specifiche del mese (archiviate con lo schedule).</p>
+      <h2 className="h2 mt-3">Disponibilità mese — {String(schedule.month).padStart(2, "0")}/{schedule.year}</h2>
+      <p className="text-secondary mb-3">Inserisci le indisponibilità specifiche del mese per ciascuna persona.</p>
 
       <ScheduleMonthlyConstraintsPanel
         scheduleId={schedule.id}
@@ -80,14 +80,9 @@ export default async function ScheduleAvailabilityPage({ params }: Props) {
 
       <div className="mt-4 d-flex flex-wrap gap-3 align-items-center">
         <Link href={`/${orgSlug}/${calId}/schedules/${schedId}/grid`} className="btn btn-success">
-          Vai alla griglia →
+          Vai al configuratore →
         </Link>
-        <Link href={`/${orgSlug}/${calId}/schedules/${schedId}/report`} className="link-dark">
-          Salta al report
-        </Link>
-        <Link href={`/${orgSlug}/${calId}/schedules`} className="link-dark">
-          Torna ai turni mensili
-        </Link>
+        <Link href={`/${orgSlug}/turni`} className="turny-back-link">← Turni</Link>
       </div>
     </>
   );

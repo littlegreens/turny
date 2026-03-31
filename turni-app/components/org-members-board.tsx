@@ -65,11 +65,10 @@ export function OrgMembersBoard({
     <>
       <section className="card mt-3">
         <div className="card-body">
-          <h2 className="h5 fw-semibold mb-2">Elenco membri</h2>
           {members.length === 0 ? (
-            <div className="alert alert-light border mt-3 mb-0" role="status">
-              <div className="fw-semibold mb-1">Nessun membro presente.</div>
-              <div className="small text-secondary">Aggiungi il primo membro per iniziare ad assegnare ruoli e calendari.</div>
+            <div className="border rounded p-4 text-center mt-3 mb-0" role="status">
+              <p className="fw-semibold mb-1">Nessuna persona presente</p>
+              <p className="small text-secondary mb-0">Aggiungi la prima persona per iniziare ad assegnare ruoli e calendari.</p>
             </div>
           ) : (
             <ul className="list-unstyled mt-3 d-grid gap-2">
@@ -90,7 +89,7 @@ export function OrgMembersBoard({
           )}
           <div className="mt-3 d-flex justify-content-end">
             <button className="btn btn-success" onClick={() => setOpenCreate(true)} disabled={!canManage}>
-              Aggiungi membro
+              Aggiungi persona
             </button>
           </div>
         </div>
@@ -102,7 +101,7 @@ export function OrgMembersBoard({
             <div className="modal-dialog modal-dialog-centered turny-modal-medium">
               <div className="modal-content turny-modal">
                 <div className="modal-header">
-                  <h5 className="modal-title">Nuovo membro</h5>
+                  <h5 className="modal-title">Nuova persona</h5>
                   <button type="button" className="btn-close" aria-label="Chiudi" onClick={() => setOpenCreate(false)} />
                 </div>
                 <div className="modal-body pb-4">

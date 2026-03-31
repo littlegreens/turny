@@ -17,6 +17,11 @@ type Props = {
   searchParams?: Promise<{ preview?: string }>;
 };
 
+function capitalizeFirst(value: string) {
+  if (!value) return value;
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
 export default async function ScheduleGridPage({ params, searchParams }: Props) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) redirect("/login");
@@ -98,7 +103,7 @@ export default async function ScheduleGridPage({ params, searchParams }: Props) 
   const periodLabel =
     periodMeta.periodType === "WEEKLY" || periodMeta.periodType === "CUSTOM"
       ? `dal ${periodMeta.startDate ?? "?"} al ${periodMeta.endDate ?? "?"}`
-      : `${new Intl.DateTimeFormat("it-IT", { month: "long" }).format(new Date(schedule.year, schedule.month - 1, 1))} ${schedule.year}`;
+      : `${capitalizeFirst(new Intl.DateTimeFormat("it-IT", { month: "long" }).format(new Date(schedule.year, schedule.month - 1, 1)))} ${schedule.year}`;
 
   const report = buildScheduleReport({
     year: schedule.year,
@@ -134,15 +139,14 @@ export default async function ScheduleGridPage({ params, searchParams }: Props) 
         items={[
           { label: "Home", href: "/" },
           { label: "Turni", href: `/${orgSlug}/turni` },
-          { label: "Configuratore turni" },
+          { label: `${schedule.calendar.name} ${periodLabel}` },
         ]}
       />
 
-      <h2 className="h2 fw-bold mt-3">Configurazione turni</h2>
-      <p className="text-secondary mb-3">
-        Calendario {schedule.calendar.name}, periodo {periodLabel}. Assegna le persone per giorno e tipo turno con controllo conflitti in tempo reale.
-        {schedule.status !== "DRAFT" ? " Modifica consentita solo in bozza." : ""}
-      </p>
+      <h2 className="h2 mt-3">Configuratore turni</h2>
+      <h3 className="mb-3">
+        {schedule.calendar.name} · {periodLabel}
+      </h3>
 
       <ScheduleGridPanel
         scheduleId={schedule.id}
@@ -240,9 +244,7 @@ export default async function ScheduleGridPage({ params, searchParams }: Props) 
       />
 
       <div className="mt-4">
-        <Link href={`/${orgSlug}/${calId}/schedules`} className="link-dark">
-          Torna ai turni mensili
-        </Link>
+        <Link href={`/${orgSlug}/turni`} className="turny-back-link">← Turni</Link>
       </div>
     </>
   );

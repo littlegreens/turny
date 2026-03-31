@@ -151,10 +151,10 @@ export function OrgMemberCreateForm({ orgSlug, canManage, canAssignAdmin, profes
       </div>
       <div className="col-12 pt-2 pb-1 d-grid">
         <button className="btn btn-success" type="submit" disabled={!canManage || loading}>
-          {loading ? "Creazione..." : "Crea membro"}
+          {loading ? "Creazione..." : "Crea persona"}
         </button>
       </div>
-      {!canManage ? <p className="small text-secondary mb-0">Non hai permessi per gestire membri.</p> : null}
+      {!canManage ? <p className="small text-secondary mb-0">Non hai permessi per gestire persone.</p> : null}
     </form>
   );
 }

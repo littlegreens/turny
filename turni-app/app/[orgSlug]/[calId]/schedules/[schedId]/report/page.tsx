@@ -99,7 +99,7 @@ export default async function ScheduleReportPage({ params }: Props) {
 
         <div className="d-flex flex-wrap justify-content-between align-items-start gap-3 mt-3">
           <div>
-            <h2 className="h2 fw-bold mb-1">
+            <h2 className="h2 mt-3 mb-1">
               Report mese — {String(schedule.month).padStart(2, "0")}/{schedule.year}
             </h2>
             <p className="text-secondary mb-0">
@@ -229,16 +229,8 @@ export default async function ScheduleReportPage({ params }: Props) {
           </div>
         </section>
 
-      <div className="mt-4 d-flex flex-wrap gap-3">
-        <Link href={`/${orgSlug}/${calId}/schedules/${schedId}/grid`} className="link-success">
-          ← Griglia turni
-        </Link>
-        <Link href={`/${orgSlug}/${calId}/schedules/${schedId}/availability`} className="link-dark">
-          Disponibilita mese
-        </Link>
-        <Link href={`/${orgSlug}/${calId}/schedules`} className="link-dark">
-          Turni mensili
-        </Link>
+      <div className="mt-4">
+        <Link href={`/${orgSlug}/turni`} className="turny-back-link">← Turni</Link>
       </div>
     </>
   );

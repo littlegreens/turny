@@ -64,7 +64,7 @@ export function OrgSettingsForm({ orgSlug, initialName, initialDescription }: Pr
           </div>
           <div className="col-12 d-flex justify-content-end">
             <button className="btn btn-success" type="button" onClick={() => void save()} disabled={loading}>
-              {loading ? "Salvataggio..." : "Salva"}
+              {loading ? "Salvataggio..." : "Salva modifiche"}
             </button>
           </div>
         </div>

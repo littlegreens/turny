@@ -60,7 +60,7 @@ export default function ForgotPasswordPage() {
 
   return (
     <main className="container py-5 d-flex flex-column justify-content-center" style={{ minHeight: "100vh", maxWidth: 560 }}>
-      <h1 className="display-6 fw-bold">Password dimenticata</h1>
+      <h1 className="display-6">Password dimenticata</h1>
       <p className="text-secondary">
         Inserisci l&apos;email dell&apos;account registrato. In locale, senza chiave Resend valida nel <code className="small">.env</code>, il link di reset
         viene mostrato qui sotto (nessuna mail parte).

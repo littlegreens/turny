@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
 import { AppBreadcrumbs } from "@/components/app-breadcrumbs";
@@ -46,8 +45,16 @@ export default async function OrgCalendarsPage({ params }: Props) {
       : { orgId: org.id },
     orderBy: { createdAt: "desc" },
     include: {
-      _count: { select: { shiftTypes: true } },
+      _count: { select: { shiftTypes: true, members: true } },
     },
+  });
+  const calendarsSorted = [...calendars].sort((a, b) => {
+    const aiA = a.aiConfig as { orderIndex?: number } | null;
+    const aiB = b.aiConfig as { orderIndex?: number } | null;
+    const ordA = typeof aiA?.orderIndex === "number" ? aiA.orderIndex : Number.MAX_SAFE_INTEGER;
+    const ordB = typeof aiB?.orderIndex === "number" ? aiB.orderIndex : Number.MAX_SAFE_INTEGER;
+    if (ordA !== ordB) return ordA - ordB;
+    return b.createdAt.getTime() - a.createdAt.getTime();
   });
   const canCreateCalendar = hasAnyRole(effectiveRoles, ["OWNER", "ADMIN"]);
 
@@ -59,14 +66,9 @@ export default async function OrgCalendarsPage({ params }: Props) {
           { label: "Calendari" },
         ]}
       />
-      <h2 className="h2 fw-bold mt-3">Calendari</h2>
+      <h2 className="h2 mt-3">Calendari</h2>
       <p className="text-secondary mb-3">Gestisci i calendari operativi dell&apos;organizzazione.</p>
-      <OrgCalendarsBoard orgSlug={org.slug} calendars={calendars} canCreateCalendar={canCreateCalendar} />
-      <div className="mt-4 d-flex gap-3">
-        <Link href={`/${org.slug}/settings`} className="link-dark">
-          Impostazioni organizzazione
-        </Link>
-      </div>
+      <OrgCalendarsBoard orgSlug={org.slug} calendars={calendarsSorted} canCreateCalendar={canCreateCalendar} />
     </>
   );
 }

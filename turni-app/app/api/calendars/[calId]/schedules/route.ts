@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 
 const createScheduleSchema = z.object({
   periodType: z.enum(["MONTHLY", "WEEKLY", "CUSTOM"]).default("MONTHLY"),
+  turnName: z.string().trim().min(2, "Nome turno troppo corto").max(120, "Nome turno troppo lungo"),
   year: z.number().int().min(2000).max(2100).optional(),
   month: z.number().int().min(1).max(12).optional(),
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data inizio non valida").optional(),
@@ -132,6 +133,7 @@ export async function POST(request: Request, { params }: Params) {
       status: "DRAFT",
       generationLog: {
         periodType,
+        turnName: parsed.data.turnName,
         startDate,
         endDate,
       },

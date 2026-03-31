@@ -14,7 +14,8 @@ type Props = {
 };
 
 function monthName(month: number) {
-  return new Intl.DateTimeFormat("it-IT", { month: "long" }).format(new Date(2026, month - 1, 1));
+  const monthLabel = new Intl.DateTimeFormat("it-IT", { month: "long" }).format(new Date(2026, month - 1, 1));
+  return monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1);
 }
 
 const MONTH_OPTIONS = Array.from({ length: 12 }, (_, idx) => {
@@ -27,6 +28,7 @@ export function OrgTurnCreateForm({ orgSlug, calendars, canCreate, onCreated }: 
   const { showToast } = useAppToast();
   const now = new Date();
   const [calendarId, setCalendarId] = useState(calendars[0]?.id ?? "");
+  const [turnName, setTurnName] = useState("");
   const [periodType, setPeriodType] = useState<"MONTHLY" | "WEEKLY" | "CUSTOM">("MONTHLY");
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
@@ -47,9 +49,10 @@ export function OrgTurnCreateForm({ orgSlug, calendars, canCreate, onCreated }: 
 
     const requestPayload =
       periodType === "MONTHLY"
-        ? { periodType, year, month }
+        ? { periodType, year, month, turnName: turnName.trim() }
         : {
             periodType,
+            turnName: turnName.trim(),
             startDate,
             endDate: periodType === "WEEKLY" && startDate ? addDays(startDate, 6) : endDate,
           };
@@ -78,6 +81,17 @@ export function OrgTurnCreateForm({ orgSlug, calendars, canCreate, onCreated }: 
           Scegli il <strong>calendario</strong> e il <strong>tipo di periodo</strong> dei turni: mensile, settimanale o intervallo date — dipende da come lavora quel calendario, non da una regola fissa.
           Per il settimanale, la data fine viene calcolata dalla data inizio.
         </p>
+      </div>
+      <div className="col-12">
+        <label className="form-label small mb-1">Nome turno</label>
+        <input
+          className="form-control input-underlined"
+          value={turnName}
+          onChange={(e) => setTurnName(e.target.value)}
+          disabled={!canCreate || loading}
+          placeholder="Es. Pronto soccorso"
+          required
+        />
       </div>
       <div className="col-12">
         <label className="form-label small mb-1">Calendario</label>
@@ -160,8 +174,8 @@ export function OrgTurnCreateForm({ orgSlug, calendars, canCreate, onCreated }: 
         </>
       )}
       <div className="col-12 d-grid pt-1">
-        <button className="btn btn-success" type="submit" disabled={!canCreate || loading || !calendarId}>
-          {loading ? "Creazione..." : "Crea turno"}
+        <button className="btn btn-success" type="submit" disabled={!canCreate || loading || !calendarId || !turnName.trim()}>
+          {loading ? "Creazione..." : "Aggiungi turno"}
         </button>
       </div>
     </form>

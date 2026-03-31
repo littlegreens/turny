@@ -78,7 +78,7 @@ export async function POST(request: Request, { params }: Params) {
     where: { userId_orgId: { userId, orgId: access.calendar.orgId } },
   });
   if (!orgMember) {
-    return NextResponse.json({ error: "L'utente non e membro dell'organizzazione" }, { status: 400 });
+    return NextResponse.json({ error: "L'utente non appartiene all'organizzazione" }, { status: 400 });
   }
 
   const existing = await prisma.calendarMember.findUnique({

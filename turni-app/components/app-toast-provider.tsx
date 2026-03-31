@@ -82,7 +82,7 @@ export function AppToastProvider({ children }: { children: React.ReactNode }) {
               background: BG_COLORS[t.kind],
               boxShadow: "0 2px 8px rgba(0,0,0,.1)",
               fontFamily: "var(--font-titillium), Arial, Helvetica, sans-serif",
-              fontSize: "0.94rem",
+              fontSize: "1rem",
               lineHeight: 1.35,
             }}
           >

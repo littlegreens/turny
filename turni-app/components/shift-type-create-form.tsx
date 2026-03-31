@@ -1,9 +1,11 @@
 "use client";
 
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useAppToast } from "@/components/app-toast-provider";
 import { ColorPalettePicker } from "@/components/color-palette-picker";
+import { WEEKDAY_OPTIONS } from "@/lib/weekdays";
 
 type Props = {
   calId: string;
@@ -19,7 +21,19 @@ export function ShiftTypeCreateForm({ calId, canCreate, onCreated }: Props) {
   const [endTime, setEndTime] = useState("14:00");
   const [minStaff, setMinStaff] = useState(1);
   const [color, setColor] = useState("#E1F5EE");
+  const [activeWeekdays, setActiveWeekdays] = useState<number[]>([1, 2, 3, 4, 5]);
+  const [weekdaysOpen, setWeekdaysOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const weekdayRows = [[1, 2, 3], [4, 5, 6], [0]];
+
+  function toggleWeekday(day: number) {
+    if (activeWeekdays.includes(day)) {
+      if (activeWeekdays.length === 1) return;
+      setActiveWeekdays((prev) => prev.filter((v) => v !== day));
+      return;
+    }
+    setActiveWeekdays((prev) => [...prev, day]);
+  }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -36,6 +50,7 @@ export function ShiftTypeCreateForm({ calId, canCreate, onCreated }: Props) {
         endTime,
         minStaff,
         color,
+        activeWeekdays,
       }),
     });
 
@@ -52,6 +67,8 @@ export function ShiftTypeCreateForm({ calId, canCreate, onCreated }: Props) {
     setEndTime("14:00");
     setMinStaff(1);
     setColor("#E1F5EE");
+    setActiveWeekdays([1, 2, 3, 4, 5]);
+    setWeekdaysOpen(false);
     setLoading(false);
     onCreated?.();
     router.refresh();
@@ -106,9 +123,38 @@ export function ShiftTypeCreateForm({ calId, canCreate, onCreated }: Props) {
       <div className="col-md-2">
         <ColorPalettePicker value={color} onChange={setColor} disabled={!canCreate || loading} />
       </div>
+      <div className="col-md-2 position-relative">
+        <label className="form-label small mb-1 d-block">Giorni attivi</label>
+        <button
+          className="btn btn-outline-success"
+          type="button"
+          onClick={() => setWeekdaysOpen((v) => !v)}
+          disabled={!canCreate || loading}
+        >
+          <Image src="/calendar.svg" alt="Giorni attivi" width={16} height={16} />
+        </button>
+        {weekdaysOpen ? (
+          <div className="weekdays-popover-dark">
+            {weekdayRows.map((row, rowIdx) => (
+              <div key={rowIdx} className="weekday-mini-row">
+                {row.map((day) => {
+                  const item = WEEKDAY_OPTIONS.find((opt) => opt.value === day);
+                  if (!item) return null;
+                  const active = activeWeekdays.includes(day);
+                  return (
+                    <button key={day} type="button" className={`weekday-mini-square ${active ? "active" : ""}`} onClick={() => toggleWeekday(day)}>
+                      {item.label}
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </div>
       <div className="col-12">
         <button className="btn btn-success" type="submit" disabled={!canCreate || loading}>
-          {loading ? "Creazione..." : "Aggiungi turno"}
+          {loading ? "Creazione..." : "Aggiungi"}
         </button>
       </div>
       {!canCreate ? <p className="small text-secondary col-12">Il tuo ruolo non puo` creare turni.</p> : null}

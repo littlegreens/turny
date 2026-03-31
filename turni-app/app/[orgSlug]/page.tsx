@@ -69,15 +69,15 @@ export default async function OrgDashboardPage({ params }: Props) {
           { label: "Dashboard" },
         ]}
       />
-      <h2 className="h2 fw-bold mt-3">Dashboard</h2>
-      <p className="text-secondary mb-3">{org.name}. Panoramica rapida del workspace.</p>
+      <h2 className="h2 mt-3">Dashboard</h2>
+      <p className="text-secondary mb-3">{org.name} — Panoramica rapida.</p>
 
       <div className="row g-3">
         {[
           { label: "Calendari", value: calendarCount },
           { label: "Turni creati", value: scheduleCount },
           { label: "Turni pubblicati", value: publishedCount },
-          { label: "Membri attivi", value: activeMembers },
+          { label: "Persone attive", value: activeMembers },
         ].map((item) => (
           <div key={item.label} className="col-6 col-md-3">
             <div
@@ -95,10 +95,10 @@ export default async function OrgDashboardPage({ params }: Props) {
 
       <div className="card mt-3">
         <div className="card-body d-flex flex-wrap gap-2">
-          <a href={`/${org.slug}/calendari`} className="btn btn-success">Apri calendari</a>
-          <a href={`/${org.slug}/turni`} className="btn btn-outline-success">Apri turni</a>
-          <a href={`/${org.slug}/members`} className="btn btn-outline-success">Apri membri</a>
-          <a href={`/${org.slug}/settings`} className="btn btn-outline-success">Apri settings</a>
+          <a href={`/${org.slug}/calendari`} className="btn btn-success">Vai ai calendari</a>
+          <a href={`/${org.slug}/turni`} className="btn btn-outline-secondary">Vai ai turni</a>
+          <a href={`/${org.slug}/members`} className="btn btn-outline-secondary">Vai alle persone</a>
+          <a href={`/${org.slug}/settings`} className="btn btn-outline-secondary">Vai alle impostazioni</a>
         </div>
       </div>
     </>

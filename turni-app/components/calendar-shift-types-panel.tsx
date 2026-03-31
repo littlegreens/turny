@@ -25,7 +25,6 @@ export function CalendarShiftTypesPanel({ calendarId, canEdit, shiftTypes }: Pro
 
   return (
     <>
-      <h2 className="h5 fw-semibold mb-2">Tipi di turno</h2>
       {shiftTypes.length === 0 ? (
         <div className="alert alert-light border mt-3 mb-0" role="status">
           <div className="fw-semibold mb-1">Nessun turno configurato.</div>
@@ -41,7 +40,7 @@ export function CalendarShiftTypesPanel({ calendarId, canEdit, shiftTypes }: Pro
       {canEdit ? (
         <div className="mt-3 d-flex justify-content-end">
           <button className="btn btn-success" onClick={() => setOpenCreate(true)}>
-            Aggiungi turno
+            Aggiungi fascia oraria
           </button>
         </div>
       ) : null}

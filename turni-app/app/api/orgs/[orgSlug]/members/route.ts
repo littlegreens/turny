@@ -134,7 +134,7 @@ export async function POST(request: Request, { params }: Params) {
   });
 
   if (!member) {
-    return NextResponse.json({ error: "Utente gia membro di questa organizzazione" }, { status: 409 });
+    return NextResponse.json({ error: "Utente gia presente in questa organizzazione" }, { status: 409 });
   }
 
   return NextResponse.json({ member }, { status: 201 });

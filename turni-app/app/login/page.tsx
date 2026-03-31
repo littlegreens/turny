@@ -106,7 +106,7 @@ function LoginForm() {
 export default function LoginPage() {
   return (
     <main className="container py-5 d-flex flex-column justify-content-center" style={{ minHeight: "100vh", maxWidth: 560 }}>
-      <h1 className="display-6 fw-bold">Accedi a Turny</h1>
+      <h1 className="display-6">Accedi a Turny</h1>
       <p className="text-secondary">
         Inserisci username o email, poi la password del tuo account.
       </p>

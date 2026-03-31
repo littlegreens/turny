@@ -6,7 +6,9 @@ import { CalendarMembersPanel } from "@/components/calendar-members-panel";
 import { CalendarShiftTypesPanel } from "@/components/calendar-shift-types-panel";
 import { CalendarCoRulesPanelV2 } from "@/components/calendar-co-rules-panel-v2";
 import { authOptions } from "@/lib/auth";
+import { resolveMemberRowColor } from "@/lib/member-row-color";
 import { hasAnyRole, normalizeRoles } from "@/lib/org-roles";
+import { fetchOrgMemberDisplayColors } from "@/lib/org-member-display-colors";
 import { prisma } from "@/lib/prisma";
 import { isSuperAdminEmail } from "@/lib/super-admin";
 
@@ -60,7 +62,10 @@ export default async function CalendarDetailPage({ params }: Props) {
     }),
     prisma.calendarMember.findMany({
       where: { calendarId: calendar.id },
-      include: { user: { select: { firstName: true, lastName: true, email: true, professionalRole: true } } },
+      include: {
+        user: { select: { firstName: true, lastName: true, email: true, professionalRole: true } },
+        constraints: { where: { type: "CUSTOM", note: "MEMBER_COLOR" }, select: { value: true } },
+      },
       orderBy: { joinedAt: "asc" },
     }),
     prisma.orgMember.findMany({
@@ -70,6 +75,9 @@ export default async function CalendarDetailPage({ params }: Props) {
     }),
   ]);
   const canEdit = hasAnyRole(effectiveRoles, ["OWNER", "ADMIN", "MANAGER"]);
+  const userIds = [...new Set(orgMembers.map((m) => m.userId))];
+  const orgDisplayRows = await fetchOrgMemberDisplayColors(calendar.orgId, userIds);
+  const orgDisplayByUserId = new Map(orgDisplayRows.map((r) => [r.userId, r]));
 
   const userIdsInCalendar = new Set(calendarMembers.map((m) => m.userId));
   const availableForCalendar = orgMembers
@@ -89,19 +97,21 @@ export default async function CalendarDetailPage({ params }: Props) {
           { label: calendar.name },
         ]}
       />
-      <h2 className="h2 fw-bold mt-3 mb-1">Calendario: {calendar.name}</h2>
-      <p className="text-secondary mb-3">
+      <h2 className="h2 mt-3 mb-1">{calendar.name}</h2>
+      <p className="text-secondary mb-0">
         {calendar.description || "Nessuna descrizione"} · Timezone: {calendar.timezone}
       </p>
+
       <section className="card mt-3">
         <div className="card-body">
+          <h3 className="mb-2">Fasce orarie</h3>
           <CalendarShiftTypesPanel calendarId={calendar.id} canEdit={canEdit} shiftTypes={shiftTypes} />
         </div>
       </section>
 
       <section className="card mt-3">
         <div className="card-body">
-          <h2 className="h5 fw-semibold mb-2">Persone nel calendario</h2>
+          <h3 className="mb-2">Persone</h3>
           <CalendarMembersPanel
             calId={calendar.id}
             canEdit={canEdit}
@@ -111,24 +121,46 @@ export default async function CalendarDetailPage({ params }: Props) {
               label: `${`${m.user.firstName} ${m.user.lastName}`.trim() || m.user.email}`,
               email: m.user.email,
               professionalRole: m.user.professionalRole || "",
+              memberColor: resolveMemberRowColor({
+                calendarConstraintColor:
+                  ((m.constraints.find((c) => (c.value as { color?: string } | undefined)?.color)?.value as { color?: string } | undefined)?.color ??
+                    null),
+                orgDefaultColor: orgDisplayByUserId.get(m.userId)?.defaultDisplayColor ?? null,
+                orgUseDefaultInCalendars: orgDisplayByUserId.get(m.userId)?.useDisplayColorInCalendars ?? true,
+              }),
             }))}
-            available={availableForCalendar}
+            available={availableForCalendar.map((u) => ({
+              ...u,
+              memberColor: resolveMemberRowColor({
+                calendarConstraintColor: null,
+                orgDefaultColor: orgDisplayByUserId.get(u.userId)?.defaultDisplayColor ?? null,
+                orgUseDefaultInCalendars: orgDisplayByUserId.get(u.userId)?.useDisplayColorInCalendars ?? true,
+              }),
+            }))}
           />
         </div>
       </section>
 
-      <CalendarCoRulesPanelV2
-        calId={calendar.id}
-        canEdit={canEdit}
-        initialCalendarRules={calendar.rules}
-        members={calendarMembers.map((m) => ({
-          id: m.id,
-          label: `${`${m.user.firstName} ${m.user.lastName}`.trim() || m.user.email}`,
-          professionalRole: m.user.professionalRole || "",
-          memberColor: null,
-        }))}
-      />
+      <section className="card mt-3">
+        <div className="card-body">
+          <h3 className="mb-2">Regole</h3>
+          <CalendarCoRulesPanelV2
+            calId={calendar.id}
+            canEdit={canEdit}
+            initialCalendarRules={calendar.rules}
+            members={calendarMembers.map((m) => ({
+              id: m.id,
+              label: `${`${m.user.firstName} ${m.user.lastName}`.trim() || m.user.email}`,
+              professionalRole: m.user.professionalRole || "",
+              memberColor: null,
+            }))}
+          />
+        </div>
+      </section>
 
+      <div className="mt-4">
+        <Link href={`/${orgSlug}/calendari`} className="turny-back-link">← Calendari</Link>
+      </div>
     </>
   );
 }

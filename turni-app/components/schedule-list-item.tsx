@@ -19,15 +19,16 @@ type Props = {
 };
 
 function monthLabel(month: number) {
-  return new Intl.DateTimeFormat("it-IT", { month: "long" }).format(new Date(2026, month - 1, 1));
+  const monthName = new Intl.DateTimeFormat("it-IT", { month: "long" }).format(new Date(2026, month - 1, 1));
+  return monthName.charAt(0).toUpperCase() + monthName.slice(1);
 }
 
 function schedulePeriodLabel(schedule: Props["schedule"]) {
   const meta = (schedule.generationLog ?? {}) as { periodType?: string; startDate?: string; endDate?: string };
   if (meta.periodType === "WEEKLY" || meta.periodType === "CUSTOM") {
-    return `${meta.periodType === "WEEKLY" ? "Settimanale" : "Custom"} - dal ${meta.startDate ?? "?"} al ${meta.endDate ?? "?"}`;
+    return `${meta.periodType === "WEEKLY" ? "Settimanale" : "Personalizzato"} — dal ${meta.startDate ?? "?"} al ${meta.endDate ?? "?"}`;
   }
-  return `Mensile - ${monthLabel(schedule.month)} ${schedule.year}`;
+  return `Mensile — ${monthLabel(schedule.month)} ${schedule.year}`;
 }
 
 function statusLabel(status: Props["schedule"]["status"]) {
@@ -59,7 +60,7 @@ export function ScheduleListItem({ orgSlug, calId, schedule, canEdit }: Props) {
       </div>
       <div className="d-flex align-items-center gap-2 flex-wrap">
         <Link href={`/${orgSlug}/${calId}/schedules/${schedule.id}/grid`} className="btn btn-sm btn-success">
-          Configuratore
+          Configura
         </Link>
         <Link href={`/${orgSlug}/${calId}/schedules/${schedule.id}/report`} className="btn btn-sm btn-outline-success">
           Report

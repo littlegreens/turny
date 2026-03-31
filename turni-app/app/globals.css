@@ -145,6 +145,40 @@ body {
   pointer-events: auto;
 }
 
+.turny-nav-tabs.nav-tabs {
+  border-bottom: 2px solid #d8e6dd;
+  margin-bottom: 2rem !important;
+}
+
+.turny-nav-tabs.nav-tabs .nav-link {
+  padding: 0.7rem 1.4rem;
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: #1f7a3f;
+  border: none;
+  border-bottom: 4px solid transparent;
+  margin-bottom: -2px;
+  border-radius: 0;
+  cursor: pointer;
+  transition: color 140ms ease, border-color 140ms ease, background 140ms ease;
+}
+
+.turny-nav-tabs.nav-tabs .nav-link:hover {
+  color: #145329;
+  background: #edf7f0;
+  border-color: transparent;
+  border-bottom-color: #8cc5a0;
+}
+
+.turny-nav-tabs.nav-tabs .nav-link.active {
+  color: #145329;
+  background: transparent;
+  border-color: transparent;
+  border-bottom-width: 5px;
+  border-bottom-style: solid;
+  border-bottom-color: #1f7a3f;
+}
+
 /* Home: header fixed deve allinearsi alla sidebar su lg+ */
 @media (min-width: 992px) {
   .home-with-sidebar .home-topbar {
@@ -184,7 +218,7 @@ textarea:focus::placeholder {
 }
 
 .input-underlined-compact {
-  font-size: 0.84rem;
+  font-size: 1rem;
   padding-top: 0.1rem;
   padding-bottom: 0.1rem;
   line-height: 1.1;
@@ -262,7 +296,7 @@ textarea:focus::placeholder {
   border-radius: 0.35rem;
   background: #ffffff;
   color: #1f7a3f;
-  font-size: 0.74rem;
+  font-size: 1rem;
   font-weight: 600;
   line-height: 1;
   padding: 0 0.25rem;
@@ -287,6 +321,12 @@ textarea:focus::placeholder {
   border: 1px solid #d8e6dd;
   border-radius: 0.85rem;
   box-shadow: 0 12px 34px rgba(16, 24, 40, 0.12);
+}
+
+.modal .modal-dialog .modal-content {
+  border: none;
+  box-shadow: 0 2px 10px #0000001a;
+  padding: 1rem;
 }
 
 /** Conferme sopra un altro modal (es. modifica membro): sfondo più scuro così il pannello sotto si attenua. */
@@ -367,12 +407,7 @@ textarea:focus::placeholder {
 }
 
 .turny-modal .modal-header {
-  padding: 0.9rem 1rem;
   border-bottom-color: #e8efea;
-}
-
-.turny-modal .modal-body {
-  padding: 1rem;
 }
 
 /* Uniformita alert in tutto il progetto */
@@ -381,3 +416,49 @@ textarea:focus::placeholder {
   font-family: var(--font-titillium), Arial, Helvetica, sans-serif;
   line-height: 1.35;
 }
+
+/* ── Scala tipografica uniforme ────────────────────────────────────────────── */
+
+/* Titolo pagina */
+h1 { font-size: 1.6rem; line-height: 1.25; }
+h2.fw-bold { font-size: 1.5rem; line-height: 1.25; font-weight: 600 !important; }
+h3 { font-weight: 600; }
+h4 { font-weight: 600; }
+
+/* Testo body base */
+body { font-size: 1rem; }
+
+/* Form controls: tutti leggibili, niente testo minuscolo */
+.form-control,
+.form-control-sm,
+.form-select,
+.form-select-sm,
+.input-underlined,
+.input-underlined-compact {
+  font-size: 1rem !important;
+}
+
+.small,
+small,
+.btn-sm,
+.form-text,
+.text-muted,
+.text-secondary.small,
+.form-label.small {
+  font-size: 1rem !important;
+  line-height: 1.4 !important;
+}
+
+/* Link "← Torna a ..." */
+.turny-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 1rem;
+  font-weight: 500;
+  color: #1f7a3f;
+  text-decoration: none;
+}
+.turny-back-link:hover { text-decoration: underline; color: #145329; }
+
+/* ─────────────────────────────────────────────────────────────────────────── */

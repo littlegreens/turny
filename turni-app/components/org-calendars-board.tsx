@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CalendarCreateForm } from "@/components/calendar-create-form";
 import { CalendarListItem } from "@/components/calendar-list-item";
+import { useAppToast } from "@/components/app-toast-provider";
 
 type CalendarRow = {
   id: string;
@@ -12,7 +13,7 @@ type CalendarRow = {
   isActive: boolean;
   description: string | null;
   activeWeekdays: number[];
-  _count?: { shiftTypes: number };
+  _count?: { shiftTypes: number; members: number };
 };
 
 type Props = {
@@ -22,27 +23,90 @@ type Props = {
 };
 
 export function OrgCalendarsBoard({ orgSlug, calendars, canCreateCalendar }: Props) {
+  const { showToast } = useAppToast();
   const [openCreate, setOpenCreate] = useState(false);
+  const [items, setItems] = useState(calendars);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [savingOrder, setSavingOrder] = useState(false);
+
+  const draggingIndex = useMemo(() => items.findIndex((x) => x.id === draggingId), [items, draggingId]);
+
+  useEffect(() => {
+    setItems(calendars);
+  }, [calendars]);
+
+  async function persistOrder(nextItems: CalendarRow[]) {
+    try {
+      setSavingOrder(true);
+      const response = await fetch(`/api/orgs/${orgSlug}/calendars/reorder`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ calendarIds: nextItems.map((x) => x.id) }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as { error?: string };
+      if (!response.ok) {
+        showToast("error", payload.error ?? "Ordinamento non salvato");
+        setItems(calendars);
+        return;
+      }
+      showToast("success", "Ordine calendari salvato.");
+    } catch {
+      showToast("error", "Errore di rete durante il salvataggio ordine");
+      setItems(calendars);
+    } finally {
+      setSavingOrder(false);
+    }
+  }
+
+  function moveItem(list: CalendarRow[], fromIdx: number, toIdx: number) {
+    if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return list;
+    const next = [...list];
+    const [moved] = next.splice(fromIdx, 1);
+    next.splice(toIdx, 0, moved);
+    return next;
+  }
 
   return (
     <>
-      <section className="card mt-4">
+      <section className="card mt-3">
         <div className="card-body">
-          <h2 className="h5 fw-semibold">Calendari</h2>
           {calendars.length === 0 ? (
-            <div className="alert alert-light border mt-3 mb-0" role="status">
-              <div className="fw-semibold mb-1">Nessun calendario creato.</div>
-              <div className="small text-secondary">Crea il primo calendario per iniziare a configurare turni e membri.</div>
+            <div className="border rounded p-4 text-center mt-3 mb-0" role="status">
+              <p className="fw-semibold mb-1">Nessun calendario creato</p>
+              <p className="small text-secondary mb-0">Crea il primo calendario per iniziare a configurare turni e persone.</p>
             </div>
           ) : (
             <ul className="list-unstyled mt-3 d-grid gap-2">
-              {calendars.map((calendar) => (
-                <CalendarListItem key={calendar.id} orgSlug={orgSlug} calendar={calendar} canEdit={canCreateCalendar} />
+              {items.map((calendar, idx) => (
+                <CalendarListItem
+                  key={calendar.id}
+                  orgSlug={orgSlug}
+                  calendar={calendar}
+                  canEdit={canCreateCalendar}
+                  canReorder={canCreateCalendar}
+                  isDragging={draggingId === calendar.id}
+                  onDragStart={() => setDraggingId(calendar.id)}
+                  onDragOver={(event) => {
+                    if (!canCreateCalendar || draggingId === null || draggingIndex === -1) return;
+                    event.preventDefault();
+                    if (draggingIndex === idx) return;
+                    setItems((prev) => {
+                      const from = prev.findIndex((x) => x.id === draggingId);
+                      return moveItem(prev, from, idx);
+                    });
+                  }}
+                  onDrop={async () => {
+                    if (!canCreateCalendar) return;
+                    setDraggingId(null);
+                    await persistOrder(items);
+                  }}
+                  onDragEnd={() => setDraggingId(null)}
+                />
               ))}
             </ul>
           )}
           <div className="mt-3 d-flex justify-content-end">
-            <button className="btn btn-success" onClick={() => setOpenCreate(true)} disabled={!canCreateCalendar}>
+            <button className="btn btn-success" onClick={() => setOpenCreate(true)} disabled={!canCreateCalendar || savingOrder}>
               Aggiungi calendario
             </button>
           </div>

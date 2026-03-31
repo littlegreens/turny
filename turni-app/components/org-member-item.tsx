@@ -1,7 +1,8 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useState } from "react";
+import Link from "next/link";
+import { useRouter, usePathname } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useBeforeUnloadWhen } from "@/hooks/use-unsaved-prompt";
 import { ColorPalettePicker } from "@/components/color-palette-picker";
 import { ConfirmModal } from "@/components/confirm-modal";
@@ -39,6 +40,7 @@ type Props = {
     initialTargetSundaysMonth: number | null;
     initialAvoidWeekdays: number[];
   }[];
+  pageMode?: boolean;
 };
 
 export function OrgMemberItem({
@@ -50,6 +52,7 @@ export function OrgMemberItem({
   professionalRoleSuggestions,
   allCalendars,
   assignedCalendars,
+  pageMode = false,
 }: Props) {
   const router = useRouter();
   const { showToast } = useAppToast();
@@ -95,7 +98,16 @@ export function OrgMemberItem({
   const [deleting, setDeleting] = useState(false);
   const [discardEditOpen, setDiscardEditOpen] = useState(false);
   const [editSnapshot, setEditSnapshot] = useState<string>("");
+  const pathname = usePathname();
   const isSelf = member.userId === myUserId;
+
+  useEffect(() => {
+    if (pageMode && !editOpen) {
+      openEdit();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageMode]);
+
   const roleLabel: Record<string, string> = {
     ADMIN: "RESPONSABILE",
     MANAGER: "MANAGER",
@@ -131,9 +143,14 @@ export function OrgMemberItem({
       setDiscardEditOpen(true);
       return;
     }
-    setEditOpen(false);
     setDiscardEditOpen(false);
     setOpenWeekdayPickerFor(null);
+    if (pageMode) {
+      const orgSlug = pathname.split("/")[1] ?? "";
+      router.push(`/${orgSlug}/members`);
+      return;
+    }
+    setEditOpen(false);
   }
 
   function openEdit() {
@@ -247,9 +264,9 @@ export function OrgMemberItem({
       showToast("error", payload.error ?? "Salvataggio non riuscito");
       return;
     }
-    tryCloseEdit(true);
+    if (!pageMode) tryCloseEdit(true);
     setPassword("");
-    showToast("success", "Membro aggiornato.");
+    showToast("success", "Persona aggiornata.");
     router.refresh();
   }
 
@@ -265,6 +282,11 @@ export function OrgMemberItem({
     await fetch(`/api/org-members/${member.id}`, { method: "DELETE" });
     setDeleting(false);
     setDeleteOpen(false);
+    if (pageMode) {
+      const orgSlug = pathname.split("/")[1] ?? "";
+      router.push(`/${orgSlug}/members`);
+      return;
+    }
     router.refresh();
   }
 
@@ -310,41 +332,10 @@ export function OrgMemberItem({
     updateCalendarPref(calendarMemberId, { avoidWeekdays: next });
   }
 
-  return (
-    <li className="border rounded p-3">
-      <div className="d-flex justify-content-between align-items-center gap-3 flex-wrap">
-        <div>
-          <p className="fw-semibold mb-0">{`${member.user.firstName} ${member.user.lastName}`.trim() || member.user.email}</p>
-          <p className="small text-secondary mb-0">
-            @{member.user.name || member.user.email.split("@")[0]} · {member.user.email} · {roles.map((role) => roleLabel[role] ?? role).join(", ")}
-          </p>
-          {professionalRole ? <p className="small text-secondary mb-0">{professionalRole}</p> : null}
-          <p className="small text-secondary mb-0 mt-1">
-            Calendari associati: {assignedCalendars.length ? assignedCalendars.map((c) => c.name).join(", ") : "nessuno"}
-          </p>
-        </div>
-        <div className="d-flex align-items-center gap-2">
-          <button className="btn btn-sm btn-outline-success" onClick={() => openEdit()}>
-            Modifica
-          </button>
-          {canRemove ? (
-            <button className="btn btn-sm btn-outline-danger" onClick={() => setDeleteOpen(true)} disabled={isSelf || loading}>
-              Rimuovi
-            </button>
-          ) : null}
-        </div>
-      </div>
+  const orgSlugFromPath = pathname.split("/")[1] ?? "";
 
-      {editOpen ? (
-        <>
-          <div className="modal fade show d-block" tabIndex={-1} role="dialog" aria-modal="true">
-            <div className="modal-dialog modal-dialog-centered turny-modal-wide">
-              <div className="modal-content turny-modal">
-                <div className="modal-header">
-                  <h5 className="modal-title">Modifica membro</h5>
-                  <button type="button" className="btn-close" aria-label="Chiudi" onClick={() => tryCloseEdit(false)} />
-                </div>
-                <div className="modal-body pb-4">
+  function renderEditForm() {
+    return (
         <div className="row g-3">
           <div className="col-md-4">
             <label className="form-label small mb-1">Nome</label>
@@ -528,28 +519,11 @@ export function OrgMemberItem({
                           </div>
                           <div className="col-md-3">
                             <label className="form-label small mb-1">Max turni (nel periodo)</label>
-                            <input
-                              type="number"
-                              min={0}
-                              max={200}
-                              className="form-control form-control-sm input-underlined"
-                              style={{ maxWidth: 110 }}
-                              value={pref.targetShiftsMonth}
-                              onChange={(e) => updateCalendarPref(cal.calendarMemberId, { targetShiftsMonth: e.target.value })}
-                              disabled={!canEditRole || loading}
-                            />
+                            <input type="number" min={0} max={200} className="form-control form-control-sm input-underlined" style={{ maxWidth: 110 }} value={pref.targetShiftsMonth} onChange={(e) => updateCalendarPref(cal.calendarMemberId, { targetShiftsMonth: e.target.value })} disabled={!canEditRole || loading} />
                           </div>
                           <div className="col-md-3">
                             <label className="form-label small mb-1">Obiettivo ore (nel mese)</label>
-                            <input
-                              type="number"
-                              min={0}
-                              className="form-control form-control-sm input-underlined"
-                              style={{ maxWidth: 110 }}
-                              value={pref.targetHoursMonth}
-                              onChange={(e) => updateCalendarPref(cal.calendarMemberId, { targetHoursMonth: e.target.value })}
-                              disabled={!canEditRole || loading}
-                            />
+                            <input type="number" min={0} className="form-control form-control-sm input-underlined" style={{ maxWidth: 110 }} value={pref.targetHoursMonth} onChange={(e) => updateCalendarPref(cal.calendarMemberId, { targetHoursMonth: e.target.value })} disabled={!canEditRole || loading} />
                           </div>
                           <div className="col-md-2">
                             <label className="form-label small mb-1">Numero notti</label>
@@ -565,39 +539,19 @@ export function OrgMemberItem({
                           </div>
                           <div className="col-12 position-relative">
                             <label className="form-label small mb-1 d-block">Evita giorni (lun–dom)</label>
-                            <button
-                              type="button"
-                              className="btn btn-sm btn-outline-success"
-                              onClick={() => setOpenWeekdayPickerFor((v) => (v === cal.calendarMemberId ? null : cal.calendarMemberId))}
-                              disabled={!canEditRole || loading}
-                            >
+                            <button type="button" className="btn btn-sm btn-outline-success" onClick={() => setOpenWeekdayPickerFor((v) => (v === cal.calendarMemberId ? null : cal.calendarMemberId))} disabled={!canEditRole || loading}>
                               {pref.avoidWeekdays.length ? formatWeekdays(pref.avoidWeekdays) : "Seleziona giorni"}
                             </button>
                             {openWeekdayPickerFor === cal.calendarMemberId ? (
-                              <div
-                                className="weekdays-popover-dark"
-                                style={{ position: "absolute", zIndex: 30, minWidth: 260 }}
-                              >
+                              <div className="weekdays-popover-dark" style={{ position: "absolute", zIndex: 30, minWidth: 260 }}>
                                 <div className="d-flex flex-wrap gap-1 mb-2">
                                   {WEEKDAY_OPTIONS.map((day) => (
-                                    <button
-                                      key={day.value}
-                                      type="button"
-                                      className={`btn btn-sm ${pref.avoidWeekdays.includes(day.value) ? "btn-success" : "btn-outline-success"}`}
-                                      onClick={() => toggleWeekday(cal.calendarMemberId, day.value)}
-                                      disabled={!canEditRole || loading}
-                                    >
+                                    <button key={day.value} type="button" className={`btn btn-sm ${pref.avoidWeekdays.includes(day.value) ? "btn-success" : "btn-outline-success"}`} onClick={() => toggleWeekday(cal.calendarMemberId, day.value)} disabled={!canEditRole || loading}>
                                       {day.label}
                                     </button>
                                   ))}
                                 </div>
-                                <button
-                                  type="button"
-                                  className="btn btn-sm btn-outline-secondary"
-                                  onClick={() => setOpenWeekdayPickerFor(null)}
-                                >
-                                  Chiudi
-                                </button>
+                                <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setOpenWeekdayPickerFor(null)}>Chiudi</button>
                               </div>
                             ) : null}
                           </div>
@@ -610,14 +564,93 @@ export function OrgMemberItem({
             </div>
           </div>
           <div className="col-12 d-flex justify-content-end gap-2">
+            {!pageMode ? (
+              <button className="btn btn-sm btn-outline-secondary" onClick={() => tryCloseEdit(false)} disabled={loading}>Annulla</button>
+            ) : null}
+            {canRemove && pageMode ? (
+              <button className="btn btn-sm btn-outline-danger" onClick={() => setDeleteOpen(true)} disabled={isSelf || loading}>Rimuovi persona</button>
+            ) : null}
             <button className="btn btn-sm btn-success" onClick={save} disabled={!canEditRole || loading}>
-              Salva
-            </button>
-            <button className="btn btn-sm btn-outline-success" onClick={() => tryCloseEdit(false)} disabled={loading}>
-              Annulla
+              {loading ? "Salvataggio..." : "Salva modifiche"}
             </button>
           </div>
         </div>
+    );
+  }
+
+  if (pageMode) {
+    return (
+      <>
+        {editOpen ? (
+          <div className="card">
+            <div className="card-body">
+              {renderEditForm()}
+            </div>
+          </div>
+        ) : null}
+        <ConfirmModal
+          open={discardEditOpen}
+          nested
+          title="Modifiche non salvate"
+          message="Uscire dalla modifica persona senza salvare? Le modifiche andranno perse."
+          confirmLabel="Abbandona"
+          cancelLabel="Continua"
+          confirmVariant="danger"
+          loading={false}
+          onCancel={() => setDiscardEditOpen(false)}
+          onConfirm={() => tryCloseEdit(true)}
+        />
+        <ConfirmModal
+          open={deleteOpen}
+          title="Rimuovi persona"
+          message={`Confermi la rimozione di ${member.user.email}?`}
+          confirmLabel="Rimuovi"
+          confirmVariant="danger"
+          loading={deleting}
+          onCancel={() => setDeleteOpen(false)}
+          onConfirm={remove}
+        />
+      </>
+    );
+  }
+
+  const memberCardColor = /^#[0-9A-Fa-f]{6}$/.test(member.defaultDisplayColor ?? "") ? (member.defaultDisplayColor as string) : "#1f7a3f";
+  return (
+    <li className="rounded p-3" style={{ border: `1px solid ${memberCardColor}`, backgroundColor: `${memberCardColor}1f` }}>
+      <div className="d-flex justify-content-between align-items-center gap-3 flex-wrap">
+        <div>
+          <p className="fw-semibold mb-0">{`${member.user.firstName} ${member.user.lastName}`.trim() || member.user.email}</p>
+          <p className="small text-secondary mb-0">
+            @{member.user.name || member.user.email.split("@")[0]} · {member.user.email} · {roles.map((role) => roleLabel[role] ?? role).join(", ")}
+          </p>
+          {professionalRole ? <p className="small text-secondary mb-0">{professionalRole}</p> : null}
+          <p className="small text-secondary mb-0 mt-1">
+            Calendari associati: {assignedCalendars.length ? assignedCalendars.map((c) => c.name).join(", ") : "nessuno"}
+          </p>
+        </div>
+        <div className="d-flex align-items-center gap-2">
+          <Link className="btn btn-sm btn-success" href={`/${orgSlugFromPath}/members/${member.id}`}>
+            Dettaglio
+          </Link>
+          {canRemove ? (
+            <button className="btn btn-sm btn-outline-danger" onClick={() => setDeleteOpen(true)} disabled={isSelf || loading}>
+              Rimuovi
+            </button>
+          ) : null}
+        </div>
+      </div>
+
+      {editOpen ? (
+        <>
+          <div className="modal fade show d-block" tabIndex={-1} role="dialog" aria-modal="true">
+            <div className="modal-dialog modal-dialog-centered turny-modal-wide">
+              <div className="modal-content turny-modal">
+                <div className="modal-header">
+                  <h5 className="modal-title">Modifica persona</h5>
+                  <button type="button" className="btn-close" aria-label="Chiudi" onClick={() => tryCloseEdit(false)} />
+                </div>
+                <div className="modal-body pb-4">
+                  {renderEditForm()}
                 </div>
               </div>
             </div>
@@ -636,7 +669,7 @@ export function OrgMemberItem({
         open={discardEditOpen}
         nested
         title="Modifiche non salvate"
-        message="Uscire dalla modifica membro senza salvare? Le modifiche andranno perse."
+        message="Uscire dalla modifica persona senza salvare? Le modifiche andranno perse."
         confirmLabel="Abbandona"
         cancelLabel="Continua"
         confirmVariant="danger"
@@ -646,7 +679,7 @@ export function OrgMemberItem({
       />
       <ConfirmModal
         open={deleteOpen}
-        title="Rimuovi membro"
+        title="Rimuovi persona"
         message={`Confermi la rimozione di ${member.user.email}?`}
         confirmLabel="Rimuovi"
         confirmVariant="danger"

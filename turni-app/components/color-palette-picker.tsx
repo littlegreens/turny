@@ -125,7 +125,7 @@ export function ColorPalettePicker({
                   height: 28,
                   borderRadius: 6,
                 }}
-                aria-label="Colore default (scheda membro organizzazione)"
+                aria-label="Colore default (scheda persona organizzazione)"
                 title="default"
               >
                 <InheritSwatchPreview />

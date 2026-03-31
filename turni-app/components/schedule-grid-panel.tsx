@@ -65,7 +65,7 @@ type Props = {
   /** Per redirect dopo archiviazione / ripristino */
   orgSlug: string;
   scheduleStatus: "DRAFT" | "PUBLISHED" | "ARCHIVED";
-  /** OWNER / ADMIN / MANAGER: mostra Archivia, Ripristina, Visualizza anche se non in bozza */
+  /** OWNER / ADMIN / MANAGER: può gestire stato/configurazione del turno */
   canManageSchedule: boolean;
   calendarName?: string;
   periodLabel?: string;
@@ -138,6 +138,7 @@ function formatReportCellDate(iso: string) {
   return new Date(`${iso}T00:00:00`).toLocaleDateString("it-IT", { weekday: "short", day: "2-digit", month: "2-digit" });
 }
 
+
 function memberShiftTargetsLine(m: MemberOpt | undefined): string {
   if (!m) return "nessuno";
   const parts: string[] = [];
@@ -198,8 +199,6 @@ export function ScheduleGridPanel({
   const [clearOpen, setClearOpen] = useState(false);
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(members[0]?.id ?? null);
   const [memberPopupOpen, setMemberPopupOpen] = useState(false);
-  const [archiveOpen, setArchiveOpen] = useState(false);
-  const [restoreOpen, setRestoreOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(initialPreviewOpen);
   const [dragMemberId, setDragMemberId] = useState<string | null>(null);
   const [memberColorDraft, setMemberColorDraft] = useState<string>("#3B8BD4");
@@ -211,8 +210,7 @@ export function ScheduleGridPanel({
   const [memberBaseShiftOff, setMemberBaseShiftOff] = useState<Record<string, boolean>>({});
   const [hoverCellKey, setHoverCellKey] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
-  /** Riepilogo, KPI, copertura e alert griglia solo su richiesta (evita liste enormi a calendario vuoto). */
-  const [reportPanelOpen, setReportPanelOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
   type RuleDraft = {
     id: string;
     name: string;
@@ -242,7 +240,6 @@ export function ScheduleGridPanel({
   const memberPopupBaselineRef = useRef<string>("");
   const [memberDiscardConfirmOpen, setMemberDiscardConfirmOpen] = useState(false);
   const [memberResetConfirmOpen, setMemberResetConfirmOpen] = useState(false);
-  const [publishOpen, setPublishOpen] = useState(false);
   const [memberUseOrgColor, setMemberUseOrgColor] = useState(false);
 
 
@@ -746,6 +743,7 @@ export function ScheduleGridPanel({
       showToast("error", payload.error ?? "Errore salvataggio");
       return;
     }
+    showToast("success", "Salvato.");
     router.refresh();
   }
 
@@ -759,44 +757,10 @@ export function ScheduleGridPanel({
       showToast("error", payload.error ?? "Errore eliminazione");
       return;
     }
+    showToast("success", "Salvato.");
     router.refresh();
   }
 
-  async function archiveSchedule() {
-    if (!canManageSchedule) return;
-    setLoadingKey("archive");
-    const res = await fetch(`/api/schedules/${scheduleId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "ARCHIVED" }),
-    });
-    setLoadingKey(null);
-    setArchiveOpen(false);
-    if (!res.ok) {
-      showToast("error", "Archiviazione non riuscita");
-      return;
-    }
-    router.push(`/${orgSlug}/turni`);
-    router.refresh();
-  }
-
-  async function restoreSchedule() {
-    if (!canManageSchedule) return;
-    setLoadingKey("restore");
-    const res = await fetch(`/api/schedules/${scheduleId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "PUBLISHED" }),
-    });
-    setLoadingKey(null);
-    setRestoreOpen(false);
-    if (!res.ok) {
-      showToast("error", "Ripristino non riuscito");
-      return;
-    }
-    router.push(`/${orgSlug}/turni`);
-    router.refresh();
-  }
 
   async function generateAuto() {
     if (!canEdit) return;
@@ -867,32 +831,25 @@ export function ScheduleGridPanel({
       showToast("error", payload.error ?? "Errore svuotamento");
       return;
     }
-    setReportPanelOpen(false);
     showToast("success", "Turno svuotato.");
     router.refresh();
   }
 
-  async function saveAll() {
-    setLoadingKey("sync");
-    await router.refresh();
-    setLoadingKey(null);
-    showToast("success", "Salvato.");
-  }
-
   async function publishSchedule() {
-    if (!canManageSchedule || scheduleStatus !== "DRAFT") return;
+    if (!canManageSchedule) return;
     setLoadingKey("publish");
     const res = await fetch(`/api/schedules/${scheduleId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: "PUBLISHED" }),
     });
+    const payload = (await res.json().catch(() => ({}))) as { error?: string };
     setLoadingKey(null);
-    setPublishOpen(false);
     if (!res.ok) {
-      showToast("error", "Pubblicazione non riuscita");
+      showToast("error", payload.error ?? "Pubblicazione non riuscita");
       return;
     }
+    showToast("success", "Turno pubblicato.");
     router.refresh();
   }
 
@@ -1177,6 +1134,7 @@ export function ScheduleGridPanel({
       showToast("error", constraintsPayload.error ?? "Errore salvataggio disponibilita");
       return;
     }
+    showToast("success", "Salvato.");
     closeMemberPopup(true);
     router.refresh();
   }
@@ -1194,6 +1152,7 @@ export function ScheduleGridPanel({
       showToast("error", payload.error ?? "Errore spostamento");
       return;
     }
+    showToast("success", "Salvato.");
     router.refresh();
   }
 
@@ -1247,25 +1206,6 @@ export function ScheduleGridPanel({
     <div>
       {canManageSchedule || canEdit ? (
         <div className="mb-3 d-flex justify-content-end gap-2 flex-wrap">
-          {canManageSchedule && scheduleStatus === "ARCHIVED" ? (
-            <button
-              type="button"
-              className="btn btn-sm btn-outline-success"
-              onClick={() => setRestoreOpen(true)}
-              disabled={loadingKey !== null}
-            >
-              Ripristina nei turni
-            </button>
-          ) : canManageSchedule ? (
-            <button
-              type="button"
-              className="btn btn-sm btn-outline-secondary"
-              onClick={() => setArchiveOpen(true)}
-              disabled={loadingKey !== null}
-            >
-              Archivia
-            </button>
-          ) : null}
           {(canManageSchedule || canEdit) && (
             <button className="btn btn-sm btn-outline-secondary" onClick={() => setPreviewOpen(true)} disabled={loadingKey !== null}>
               Visualizza
@@ -1296,6 +1236,7 @@ export function ScheduleGridPanel({
         </p>
       ) : null}
 
+      <section id="configuratore" className="mt-3">
       {shiftTypes.length === 0 ? (
         <div className="alert alert-warning border mb-0" role="status">
           Nessun tipo turno attivo: apri il calendario dalla home organizzazione, sezione «Tipi di turno», e crea o riattiva almeno un turno.
@@ -1314,7 +1255,7 @@ export function ScheduleGridPanel({
               overflowY: "auto",
             }}
           >
-            <section className="card border shadow-none">
+            <section className="card shadow-none">
               <div className="card-body">
               <h2 className="h6 fw-semibold mb-2">Persone</h2>
               <div className="d-grid gap-1 mb-3">
@@ -1354,9 +1295,6 @@ export function ScheduleGridPanel({
                   </div>
                 ))}
               </div>
-              <p className="small text-secondary mt-2 mb-0">
-                Trascina i nomi nelle celle. Clicca la persona per aprire disponibilita e colore.
-              </p>
             </div>
             </section>
           </div>
@@ -1512,14 +1450,18 @@ export function ScheduleGridPanel({
         </div>
       </div>
 
-      {!reportPanelOpen ? (
+      </>
+      )}
+      </section>
+
+      <section id="regole" className="mt-3">
         <>
-          <section className="card mt-3">
+          <section className="card">
             <div className="card-body py-3">
               <div>
-                <h2 className="h6 fw-semibold mb-1">Regole turno</h2>
+                <h3 className="mb-1">Regole turno</h3>
                 <p className="small text-secondary mb-0">
-                  Regole HARD per slot (giorno×turno): co-presenza (“deve stare con”) ed esclusione (“non deve stare con”).
+                  Regole generali di co-presenza o esclusione tra persone.
                 </p>
                 {!canEditRules ? (
                   <p className="small text-warning mb-0 mt-1">Modifica consentita solo quando il turno è in bozza.</p>
@@ -1527,12 +1469,16 @@ export function ScheduleGridPanel({
               </div>
 
               {rulesDraft.length === 0 ? (
-                <div className="mt-3 d-flex justify-content-between align-items-center gap-2 flex-wrap">
+                <>
+                <div className="mt-3 border rounded-3 p-3">
                   <p className="small text-secondary mb-0">Non ci sono regole.</p>
+                </div>
+                <div className="mt-3">
                   <button type="button" className="btn btn-sm btn-success" onClick={() => openRuleModal(null)} disabled={!canEditRules || loadingKey !== null}>
                     Aggiungi regola
                   </button>
                 </div>
+                </>
               ) : (
                 <div className="d-grid gap-2 mt-3">
                   {rulesDraft.map((r) => (
@@ -1545,7 +1491,7 @@ export function ScheduleGridPanel({
                         </div>
                       </div>
                       <div className="d-flex gap-2">
-                        <button type="button" className="btn btn-sm btn-outline-success" onClick={() => openRuleModal(r.id)} disabled={loadingKey !== null || !canEditRules}>
+                        <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => openRuleModal(r.id)} disabled={loadingKey !== null || !canEditRules}>
                           Modifica
                         </button>
                         <button
@@ -1569,16 +1515,8 @@ export function ScheduleGridPanel({
             </div>
           </section>
 
-          <div className="mt-3 d-flex flex-wrap align-items-center gap-2">
-            <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => setReportPanelOpen(true)}>
-              Visualizza report
-            </button>
-            <span className="small text-secondary mb-0">
-              Riepilogo, totali, copertura e alert dalla griglia compaiono solo dopo «Visualizza report».
-            </span>
-          </div>
         </>
-      ) : null}
+      </section>
 
       {ruleModalOpen ? (
         <>
@@ -1765,10 +1703,18 @@ export function ScheduleGridPanel({
         </>
       ) : null}
 
-      {reportPanelOpen ? (
-        <>
-      <section className="card mt-3">
-        <div className="card-body py-2">
+      <section id="report" className="card mt-3">
+        <div className="card-body">
+          <h3 className="mb-3">Report</h3>
+          {!reportOpen ? (
+            <div className="d-flex justify-content-start">
+              <button type="button" className="btn btn-outline-secondary" onClick={() => setReportOpen(true)}>
+                Visualizza report
+              </button>
+            </div>
+          ) : (
+          <>
+      <section className="card">
           <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
             <h2 className="h6 fw-semibold mb-0">Riepilogo per persona</h2>
             <ScheduleReportCsvButton
@@ -1817,36 +1763,10 @@ export function ScheduleGridPanel({
               </tbody>
             </table>
           </div>
-          <p className="small text-secondary mt-2 mb-0">
-            Gg liberi: giorni del periodo senza turni assegnati.
-          </p>
-        </div>
-      </section>
-
-      <section className="row g-3 mt-2">
-        <div className="col-md-4">
-          <div className="border rounded p-3 h-100">
-            <p className="small text-secondary mb-1">Assegnazioni totali</p>
-            <p className="h4 fw-bold mb-0">{reportSummary.totals.assignments}</p>
-          </div>
-        </div>
-        <div className="col-md-4">
-          <div className="border rounded p-3 h-100">
-            <p className="small text-secondary mb-1">Ore coperte (stimato)</p>
-            <p className="h4 fw-bold mb-0">{reportSummary.totals.hours}</p>
-          </div>
-        </div>
-        <div className="col-md-4">
-          <div className="border rounded p-3 h-100">
-            <p className="small text-secondary mb-1">Slot giorno×turno controllati</p>
-            <p className="h4 fw-bold mb-0">{reportSummary.totals.shiftSlotsChecked}</p>
-          </div>
-        </div>
       </section>
 
       <section className="card mt-3">
-        <div className="card-body py-2">
-          <h2 className="h6 fw-semibold mb-2">Copertura min/max staff</h2>
+          <h2 className="h6 fw-semibold mb-2">Copertura</h2>
           {reportSummary.coverageAlerts.length === 0 ? (
             <p className="text-secondary small mb-0">Nessun alert: tutte le celle attive rispettano min/max.</p>
           ) : (
@@ -1854,17 +1774,18 @@ export function ScheduleGridPanel({
               <table className="table table-sm table-bordered mb-0">
                 <thead>
                   <tr>
-                    <th>Tipo</th>
                     <th>Data</th>
                     <th>Turno</th>
-                    <th className="text-end">Assegnati</th>
-                    <th className="text-end">Min</th>
+                    <th>Tipo</th>
+                    <th className="text-end">Slot</th>
                     <th className="text-end">Max</th>
                   </tr>
                 </thead>
                 <tbody>
                   {reportSummary.coverageAlerts.map((a, i) => (
                     <tr key={`${a.date}-${a.shiftTypeId}-${a.kind}-${i}`}>
+                      <td>{formatReportCellDate(a.date)}</td>
+                      <td>{a.shiftName}</td>
                       <td>
                         {a.kind === "UNDERSTAFFED" ? (
                           <span className="text-danger">Sottocopertura</span>
@@ -1872,10 +1793,7 @@ export function ScheduleGridPanel({
                           <span className="text-warning">Sovraffollamento</span>
                         )}
                       </td>
-                      <td>{formatReportCellDate(a.date)}</td>
-                      <td>{a.shiftName}</td>
                       <td className="text-end">{a.count}</td>
-                      <td className="text-end">{a.minStaff}</td>
                       <td className="text-end">{a.maxStaff ?? "—"}</td>
                     </tr>
                   ))}
@@ -1883,31 +1801,17 @@ export function ScheduleGridPanel({
               </table>
             </div>
           )}
-        </div>
       </section>
 
-      {alerts.length > 0 ? (
-        <section className="card mt-3 border-warning">
-          <div className="card-body py-2">
-            <h2 className="h6 fw-semibold mb-2">Alert dalla griglia</h2>
-            <ul className="small mb-0 ps-3">
-              {alerts.map((a, i) => (
-                <li key={i} className={a.level === "ERROR" ? "text-danger" : "text-warning"}>
-                  {a.text}
-                </li>
-              ))}
-            </ul>
-          </div>
-        </section>
-      ) : null}
-
-      <div className="mt-3 d-flex flex-wrap gap-2">
-        <button type="button" className="btn btn-sm btn-secondary" onClick={() => setReportPanelOpen(false)}>
+      <div className="mt-3 d-flex justify-content-start">
+        <button type="button" className="btn btn-outline-secondary" onClick={() => setReportOpen(false)}>
           Nascondi report
         </button>
       </div>
-        </>
-      ) : null}
+          </>
+          )}
+        </div>
+      </section>
 
       {(canEdit || (canManageSchedule && scheduleStatus === "DRAFT")) ? (
         <section className="card mt-3 border-secondary border-opacity-25">
@@ -1917,26 +1821,14 @@ export function ScheduleGridPanel({
                 <button type="button" className="btn btn-outline-danger" onClick={() => setClearOpen(true)} disabled={loadingKey !== null}>
                   Svuota
                 </button>
-                <button type="button" className="btn btn-success px-4" onClick={() => void saveAll()} disabled={loadingKey !== null}>
-                  {loadingKey === "sync" ? "Salvataggio..." : "Salva"}
+                <button type="button" className="btn btn-success px-4" onClick={() => void publishSchedule()} disabled={loadingKey !== null || !canManageSchedule}>
+                  {loadingKey === "publish" ? "Pubblicazione..." : "Pubblica"}
                 </button>
               </>
-            ) : null}
-            {canManageSchedule && scheduleStatus === "DRAFT" ? (
-              <button
-                type="button"
-                className="btn btn-outline-success px-4"
-                onClick={() => setPublishOpen(true)}
-                disabled={loadingKey !== null}
-              >
-                Pubblica
-              </button>
             ) : null}
           </div>
         </section>
       ) : null}
-      </>
-      )}
 
       <InfeasibleGenerateModal
         open={infeasibleModal.open}
@@ -1992,39 +1884,6 @@ export function ScheduleGridPanel({
         loading={loadingKey === "clear"}
         onCancel={() => setClearOpen(false)}
         onConfirm={() => void clearAllAssignments()}
-      />
-      <ConfirmModal
-        open={publishOpen}
-        title="Pubblica turni"
-        message="Pubblicare questo periodo? Il team potrà consultare i turni assegnati (stato pubblicato)."
-        confirmLabel="Pubblica"
-        cancelLabel="Annulla"
-        confirmVariant="success"
-        loading={loadingKey === "publish"}
-        onCancel={() => setPublishOpen(false)}
-        onConfirm={() => void publishSchedule()}
-      />
-      <ConfirmModal
-        open={archiveOpen}
-        title="Archivia schedule"
-        message="Il periodo uscirà dall'elenco turni attivi e sarà consultabile in Archivio. Continuare?"
-        confirmLabel="Archivia"
-        cancelLabel="Annulla"
-        confirmVariant="primary"
-        loading={loadingKey === "archive"}
-        onCancel={() => setArchiveOpen(false)}
-        onConfirm={() => void archiveSchedule()}
-      />
-      <ConfirmModal
-        open={restoreOpen}
-        title="Ripristina nei turni"
-        message="Il schedule tornerà visibile nell'elenco turni come pubblicato. Per modificarlo di nuovo le assegnazioni serve riportarlo in bozza dal report."
-        confirmLabel="Ripristina"
-        cancelLabel="Annulla"
-        confirmVariant="success"
-        loading={loadingKey === "restore"}
-        onCancel={() => setRestoreOpen(false)}
-        onConfirm={() => void restoreSchedule()}
       />
       <ConfirmModal
         open={deleteRuleTargetId !== null}
