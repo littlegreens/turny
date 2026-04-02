@@ -1,5 +1,126 @@
 @import "tailwindcss";
 
+/* Icone Google Material Symbols (lente ± sulla griglia configuratore).
+ * Il font si carica da <link> in app/layout.tsx per evitare conflitti PostCSS con @import dopo Tailwind. */
+.material-symbols-outlined {
+  font-family: "Material Symbols Outlined";
+  font-weight: normal;
+  font-style: normal;
+  font-size: 1.25rem;
+  line-height: 1;
+  display: inline-block;
+  vertical-align: middle;
+  font-variation-settings:
+    "FILL" 0,
+    "wght" 400,
+    "GRAD" 0,
+    "opsz" 24;
+}
+
+/* Calendario settimanale configuratore: testi contenuti nella cella */
+.config-calendar-weeks .calendar-day-cell {
+  min-width: 0;
+}
+
+.config-calendar-weeks .calendar-day-cell > .rounded-3 {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.config-calendar-weeks .calendar-shift-slot {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.config-calendar-weeks .config-cal-shift-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.config-calendar-weeks .config-cal-chips {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.config-calendar-weeks .config-cal-chip {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.config-calendar-weeks .config-cal-chip .config-cal-chip-label {
+  min-width: 0;
+}
+
+/* Ruoli per slot (fasce orarie): riga aria, pin allineate, select stretta */
+.shift-role-slot-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.shift-role-slot-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.65rem 0.85rem;
+  padding: 0.35rem 0;
+}
+
+.shift-role-slot-pin {
+  display: inline-flex;
+  align-items: center;
+  max-width: 220px;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.2;
+  border: 1px solid #ced4da;
+  background: #fff;
+  color: #495057;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.shift-role-slot-pin--slot {
+  background: #f1f3f5;
+  border-color: #adb5bd;
+  color: #343a40;
+  flex-shrink: 0;
+}
+
+.shift-role-slot-pin--neutral {
+  background: #f8f9fa;
+  border-color: #dee2e6;
+  color: #6c757d;
+  font-weight: 500;
+}
+
+.shift-role-slot-pin--role {
+  background: #e8f3ec;
+  border-color: #1f7a3f;
+  color: #145329;
+}
+
+.shift-role-slot-select {
+  width: 7.25rem;
+  max-width: 7.25rem;
+  min-width: 0;
+  flex-shrink: 0;
+  padding-left: 0.4rem;
+  padding-right: 1.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid #86b79a;
+  background-color: #fafcfb;
+}
+
+.shift-role-slot-select:focus {
+  border-color: #1f7a3f;
+  box-shadow: 0 0 0 0.15rem rgba(31, 122, 63, 0.2);
+}
+
 :root {
   --background: #ffffff;
   --foreground: #171717;

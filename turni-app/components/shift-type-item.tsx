@@ -191,33 +191,41 @@ export function ShiftTypeItem({
                     </div>
                     <div className="col-12">
                       <label className="form-label small mb-1">Ruoli per slot</label>
-                      <div className="d-grid gap-2">
-                        {Array.from({ length: Math.max(1, minStaff) }, (_, i) => (
-                          <div key={i} className="d-flex align-items-center gap-2">
-                            <span className="small text-secondary" style={{ minWidth: 64 }}>
-                              Slot {i + 1}
-                            </span>
-                            <select
-                              className="form-select form-select-sm input-underlined input-underlined-compact"
-                              value={roleSlots[i] ?? ""}
-                              onChange={(e) => {
-                                const next = e.target.value ? e.target.value : null;
-                                setRoleSlots((prev) => {
-                                  const out = Array.from({ length: Math.max(1, minStaff) }, (_, j) => prev[j] ?? null);
-                                  out[i] = next;
-                                  return out;
-                                });
-                              }}
-                            >
-                              <option value="">Indifferente</option>
-                              {roleOptions.map((r) => (
-                                <option key={r} value={r}>
-                                  {r}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        ))}
+                      <div className="shift-role-slot-rows">
+                        {Array.from({ length: Math.max(1, minStaff) }, (_, i) => {
+                          const chosen = roleSlots[i] ?? null;
+                          return (
+                            <div key={i} className="shift-role-slot-row">
+                              <span className="shift-role-slot-pin shift-role-slot-pin--slot">Slot {i + 1}</span>
+                              <span
+                                className={`shift-role-slot-pin ${chosen ? "shift-role-slot-pin--role" : "shift-role-slot-pin--neutral"}`}
+                                title={chosen ?? "Indifferente"}
+                              >
+                                {chosen ?? "Indifferente"}
+                              </span>
+                              <select
+                                className="form-select form-select-sm shift-role-slot-select"
+                                aria-label={`Ruolo slot ${i + 1}`}
+                                value={chosen ?? ""}
+                                onChange={(e) => {
+                                  const next = e.target.value ? e.target.value : null;
+                                  setRoleSlots((prev) => {
+                                    const out = Array.from({ length: Math.max(1, minStaff) }, (_, j) => prev[j] ?? null);
+                                    out[i] = next;
+                                    return out;
+                                  });
+                                }}
+                              >
+                                <option value="">Indifferente</option>
+                                {roleOptions.map((r) => (
+                                  <option key={r} value={r}>
+                                    {r}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                     <div className="col-12 col-md-6 position-relative">

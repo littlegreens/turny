@@ -1,10 +1,17 @@
 "use client";
 
 import Image from "next/image";
-import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
-import { ColorPalettePicker } from "@/components/color-palette-picker";
-import { useBeforeUnloadWhen } from "@/hooks/use-unsaved-prompt";
+import { useCallback, useMemo, useState } from "react";
+import {
+  SCHEDULE_PREVIEW_ZOOM_LEVELS,
+  buildSchedulePreviewCalendarWeekRows,
+  ScheduleReadonlyCalendarWeeks,
+  ScheduleReadonlyStandardTable,
+  utcDayOfWeek,
+  type SchedulePreviewMemberColor,
+  type SchedulePreviewShiftType,
+} from "@/components/schedule-readonly-preview";
+import { isShiftActiveOnDate, type HolidayOverrideDraft } from "@/lib/holiday-overrides";
 
 type ShiftTypeCol = {
   id: string;
@@ -12,6 +19,7 @@ type ShiftTypeCol = {
   startTime: string;
   endTime: string;
   color: string;
+  minStaff: number;
   activeWeekdays: number[];
 };
 
@@ -25,7 +33,6 @@ type MemberOpt = {
 type GridAssignment = {
   id: string;
   memberId: string;
-  /** Persona extra: memberId vuoto, usa guestColor per il chip. */
   isGuest?: boolean;
   guestColor?: string | null;
   shiftTypeId: string;
@@ -41,6 +48,7 @@ type Props = {
   startDate?: string;
   endDate?: string;
   currentUserId?: string;
+  holidayOverrides?: HolidayOverrideDraft[];
   shiftTypes: ShiftTypeCol[];
   members: MemberOpt[];
   assignments: GridAssignment[];
@@ -54,13 +62,19 @@ function daysInMonth(year: number, month: number) {
   return new Date(year, month, 0).getDate();
 }
 
-function utcDayOfWeek(dateStr: string): number {
-  return new Date(`${dateStr}T00:00:00.000Z`).getUTCDay();
-}
-
 function formatDateIt(isoDate: string) {
   const d = new Date(`${isoDate}T00:00:00.000Z`);
-  return new Intl.DateTimeFormat("it-IT").format(d);
+  return new Intl.DateTimeFormat("it-IT", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(d);
+}
+
+function formatDateShort(isoDate: string) {
+  const d = new Date(`${isoDate}T00:00:00.000Z`);
+  return new Intl.DateTimeFormat("it-IT", { day: "numeric", month: "short" }).format(d);
 }
 
 export function WorkerTurnsView({
@@ -69,15 +83,22 @@ export function WorkerTurnsView({
   startDate,
   endDate,
   currentUserId,
+  holidayOverrides = [],
   shiftTypes,
   members,
   assignments,
 }: Props) {
-  const router = useRouter();
-  const [viewMode, setViewMode] = useState<"standard" | "calendar" | "mine">("mine");
-  const [myColorDraft, setMyColorDraft] = useState<string | null>(null);
-  const [colorSaving, setColorSaving] = useState(false);
-  const [colorMsg, setColorMsg] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<"standard" | "calendar" | "mine">("standard");
+  const [soloMeOnly, setSoloMeOnly] = useState(false);
+  const [previewZoomIdx, setPreviewZoomIdx] = useState(3);
+
+  const holidayList = useMemo(() => holidayOverrides ?? [], [holidayOverrides]);
+
+  const isShiftActivePreview = useCallback(
+    (dateStr: string, st: SchedulePreviewShiftType) =>
+      isShiftActiveOnDate(holidayList, dateStr, utcDayOfWeek(dateStr), st.id, st.activeWeekdays),
+    [holidayList],
+  );
 
   const dates = useMemo(() => {
     if (startDate && endDate && endDate >= startDate) {
@@ -103,20 +124,11 @@ export function WorkerTurnsView({
     };
   });
 
-  const byCell = useMemo(() => {
-    const m = new Map<string, GridAssignment[]>();
-    for (const a of assignments) {
-      const k = `${a.date}|${a.shiftTypeId}`;
-      const list = m.get(k) ?? [];
-      list.push(a);
-      m.set(k, list);
-    }
-    return m;
-  }, [assignments]);
+  const calendarWeekRows = useMemo(() => buildSchedulePreviewCalendarWeekRows(dates), [dates]);
 
-  const memberById = useMemo(() => {
-    const m = new Map<string, MemberOpt>();
-    for (const x of members) m.set(x.id, x);
+  const previewMemberColorById = useMemo(() => {
+    const m = new Map<string, SchedulePreviewMemberColor>();
+    for (const x of members) m.set(x.id, { memberColor: x.memberColor });
     return m;
   }, [members]);
 
@@ -125,11 +137,21 @@ export function WorkerTurnsView({
     [currentUserId, members],
   );
 
-  const savedColorForCompare =
-    myMember?.memberColor && /^#[0-9A-Fa-f]{6}$/.test(myMember.memberColor) ? myMember.memberColor : "#3B8BD4";
-  const effectiveColor = myColorDraft ?? savedColorForCompare;
-  const colorDraftDirty = Boolean(myMember) && myColorDraft !== null && myColorDraft !== savedColorForCompare;
-  useBeforeUnloadWhen(colorDraftDirty);
+  const displayAssignments = useMemo(() => {
+    if (!soloMeOnly || !myMember) return assignments;
+    return assignments.filter((a) => a.memberId === myMember.id);
+  }, [assignments, soloMeOnly, myMember]);
+
+  const byCell = useMemo(() => {
+    const m = new Map<string, GridAssignment[]>();
+    for (const a of displayAssignments) {
+      const k = `${a.date}|${a.shiftTypeId}`;
+      const list = m.get(k) ?? [];
+      list.push(a);
+      m.set(k, list);
+    }
+    return m;
+  }, [displayAssignments]);
 
   const myAssignments = useMemo(() => {
     if (!myMember) return [] as GridAssignment[];
@@ -153,126 +175,132 @@ export function WorkerTurnsView({
     [myAssignments, shiftTypes],
   );
 
+  const soloMeVisible = myMember && (viewMode === "standard" || viewMode === "calendar");
+  const previewZoom = SCHEDULE_PREVIEW_ZOOM_LEVELS[previewZoomIdx];
+
   return (
-    <section className="card mt-3">
+    <section className="card mt-3 worker-turns-card border-0 shadow-sm">
       <div className="card-body p-3 p-md-4">
-        <div className="d-flex align-items-center gap-2 flex-wrap mb-3" aria-label="Viste visualizzazione">
-          <button
-            type="button"
-            className={`btn btn-sm ${viewMode === "standard" ? "btn-success" : "btn-outline-success"}`}
-            onClick={() => setViewMode("standard")}
-          >
-            <Image src="/dashboard.svg" alt="" width={20} height={20} style={{ marginRight: 8, filter: viewMode === "standard" ? "brightness(0) invert(1)" : "none" }} />
-            Standard
-          </button>
-          <button
-            type="button"
-            className={`btn btn-sm ${viewMode === "calendar" ? "btn-success" : "btn-outline-success"}`}
-            onClick={() => setViewMode("calendar")}
-          >
-            <Image src="/calendar.svg" alt="" width={20} height={20} style={{ marginRight: 8, filter: viewMode === "calendar" ? "brightness(0) invert(1)" : "none" }} />
-            Calendario
-          </button>
-          <button
-            type="button"
-            className={`btn btn-sm ${viewMode === "mine" ? "btn-success" : "btn-outline-success"}`}
-            onClick={() => setViewMode("mine")}
-          >
-            <Image src="/my_turni.svg" alt="" width={20} height={20} style={{ marginRight: 8, filter: viewMode === "mine" ? "brightness(0) invert(1)" : "none" }} />
-            I miei turni
-          </button>
+        <div className="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3" aria-label="Viste visualizzazione">
+          <div className="d-flex align-items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              className={`btn btn-sm ${viewMode === "standard" ? "btn-success" : "btn-outline-success"}`}
+              onClick={() => setViewMode("standard")}
+            >
+              <Image
+                src="/dashboard.svg"
+                alt=""
+                width={20}
+                height={20}
+                style={{ marginRight: 8, filter: viewMode === "standard" ? "brightness(0) invert(1)" : "none" }}
+              />
+              Standard
+            </button>
+            <button
+              type="button"
+              className={`btn btn-sm ${viewMode === "calendar" ? "btn-success" : "btn-outline-success"}`}
+              onClick={() => setViewMode("calendar")}
+            >
+              <Image
+                src="/calendar.svg"
+                alt=""
+                width={20}
+                height={20}
+                style={{ marginRight: 8, filter: viewMode === "calendar" ? "brightness(0) invert(1)" : "none" }}
+              />
+              Calendario
+            </button>
+            <button
+              type="button"
+              className={`btn btn-sm ${viewMode === "mine" ? "btn-success" : "btn-outline-success"}`}
+              onClick={() => setViewMode("mine")}
+            >
+              <Image
+                src="/my_turni.svg"
+                alt=""
+                width={20}
+                height={20}
+                style={{ marginRight: 8, filter: viewMode === "mine" ? "brightness(0) invert(1)" : "none" }}
+              />
+              I miei turni
+            </button>
+          </div>
+          <div className="d-flex align-items-center gap-2 flex-wrap">
+            {viewMode === "standard" || viewMode === "calendar" ? (
+              <>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline-success d-inline-flex align-items-center justify-content-center px-2"
+                  aria-label="Riduci zoom anteprima"
+                  title="Riduci zoom"
+                  disabled={previewZoomIdx <= 0}
+                  onClick={() => setPreviewZoomIdx((i) => Math.max(0, i - 1))}
+                >
+                  <span className="material-symbols-outlined" aria-hidden="true">
+                    zoom_out
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline-success d-inline-flex align-items-center justify-content-center px-2"
+                  aria-label="Ingrandisci zoom anteprima"
+                  title="Ingrandisci zoom"
+                  disabled={previewZoomIdx >= SCHEDULE_PREVIEW_ZOOM_LEVELS.length - 1}
+                  onClick={() => setPreviewZoomIdx((i) => Math.min(SCHEDULE_PREVIEW_ZOOM_LEVELS.length - 1, i + 1))}
+                >
+                  <span className="material-symbols-outlined" aria-hidden="true">
+                    zoom_in
+                  </span>
+                </button>
+              </>
+            ) : null}
+            {soloMeVisible ? (
+              <button
+                type="button"
+                className={`btn btn-sm d-inline-flex align-items-center justify-content-center p-0 rounded-circle border-2 ${
+                  soloMeOnly
+                    ? "btn-success border-success"
+                    : "btn-outline-success bg-white border-success"
+                }`}
+                style={{ width: 40, height: 40 }}
+                title={soloMeOnly ? "Mostra tutti nei turni" : "Mostra solo i miei turni nelle viste"}
+                aria-pressed={soloMeOnly}
+                onClick={() => setSoloMeOnly((v) => !v)}
+              >
+                <span
+                  className="material-symbols-outlined"
+                  aria-hidden="true"
+                  style={{ fontSize: "1.35rem", lineHeight: 1 }}
+                >
+                  person_search
+                </span>
+              </button>
+            ) : null}
+          </div>
         </div>
 
         {viewMode === "standard" ? (
-          <div className="table-responsive">
-            <table className="table table-bordered align-middle mb-0" style={{ minWidth: 880, tableLayout: "fixed" }}>
-              <thead>
-                <tr>
-                  <th style={{ width: 100 }}>Giorno</th>
-                  {shiftTypes.map((st) => (
-                    <th key={`preview-${st.id}`} className="text-center">
-                      <div className="fw-semibold">{st.name}</div>
-                      <div className="small text-secondary">{st.startTime} - {st.endTime}</div>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {days.map((d) => (
-                  <tr key={`preview-row-${d.dateStr}`}>
-                    <th className="py-3">
-                      <div className="fw-semibold">{d.day}</div>
-                      <div className="small text-secondary text-capitalize">{d.weekday}</div>
-                    </th>
-                    {shiftTypes.map((st) => {
-                      const cell = byCell.get(`${d.dateStr}|${st.id}`) ?? [];
-                      const shiftInactive = !st.activeWeekdays.includes(utcDayOfWeek(d.dateStr));
-                      return (
-                        <td key={`preview-${d.dateStr}-${st.id}`} className="p-2" style={{ background: shiftInactive ? "#f8f9fa" : `${st.color}14`, minHeight: 96 }}>
-                          <div className="d-flex flex-wrap gap-1 align-items-start">
-                            {cell.map((a) => {
-                              const m = a.isGuest ? undefined : memberById.get(a.memberId);
-                              const c = a.isGuest ? (a.guestColor ?? "#6b7280") : null;
-                              const chipBg = c ? `${c}1f` : m?.memberColor ? `${m.memberColor}1f` : `${a.shiftTypeColor}2a`;
-                              const color = c ?? m?.memberColor ?? "#1f2937";
-                              return (
-                                <span
-                                  key={`preview-chip-${a.id}`}
-                                  className="d-inline-flex align-items-center rounded-2 px-2 py-2 small fw-semibold"
-                                  style={{ backgroundColor: chipBg, color }}
-                                >
-                                  {a.memberLabel}
-                                </span>
-                              );
-                            })}
-                          </div>
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="config-grid-zoom-shell w-100 overflow-x-auto" style={{ zoom: previewZoom }}>
+            <ScheduleReadonlyStandardTable
+              days={days}
+              shiftTypes={shiftTypes}
+              byCell={byCell}
+              memberById={previewMemberColorById}
+              isShiftActive={isShiftActivePreview}
+            />
           </div>
         ) : null}
 
         {viewMode === "calendar" ? (
-          <div className="row g-2">
-            {days.map((d) => (
-              <div key={`cal-${d.dateStr}`} className="col-12 col-md-6 col-xl-4">
-                <div className="border rounded-3 p-2 h-100 bg-white">
-                  <p className="fw-semibold mb-2">{d.weekday} {d.day}</p>
-                  <div className="d-grid gap-2">
-                    {shiftTypes.map((st) => {
-                      const cell = byCell.get(`${d.dateStr}|${st.id}`) ?? [];
-                      const inactive = !st.activeWeekdays.includes(utcDayOfWeek(d.dateStr));
-                      return (
-                        <div key={`cal-${d.dateStr}-${st.id}`} className="rounded-2 p-2" style={{ background: inactive ? "#f8f9fa" : `${st.color}18` }}>
-                          <div className="small fw-semibold">
-                            {st.name} <span className="text-secondary fw-normal">{st.startTime}-{st.endTime}</span>
-                          </div>
-                          <div className="d-flex flex-wrap gap-1 mt-1">
-                            {cell.length === 0 ? <span className="small text-secondary">—</span> : null}
-                            {cell.slice(0, 3).map((a) => {
-                              const m = a.isGuest ? undefined : memberById.get(a.memberId);
-                              const c = a.isGuest ? (a.guestColor ?? "#6b7280") : null;
-                              const chipBg = c ? `${c}1f` : m?.memberColor ? `${m.memberColor}1f` : `${a.shiftTypeColor}2a`;
-                              const color = c ?? m?.memberColor ?? "#1f2937";
-                              return (
-                                <span key={`cal-chip-${a.id}`} className="d-inline-flex rounded-2 px-2 py-1 small fw-semibold" style={{ backgroundColor: chipBg, color }}>
-                                  {a.memberLabel}
-                                </span>
-                              );
-                            })}
-                            {cell.length > 3 ? <span className="badge text-bg-light">+{cell.length - 3}</span> : null}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            ))}
+          <div className="config-grid-zoom-shell w-100 overflow-x-auto" style={{ zoom: previewZoom }}>
+            <ScheduleReadonlyCalendarWeeks
+              calendarWeekRows={calendarWeekRows}
+              shiftTypes={shiftTypes}
+              byCell={byCell}
+              memberById={previewMemberColorById}
+              isShiftActive={isShiftActivePreview}
+            />
           </div>
         ) : null}
 
@@ -283,65 +311,71 @@ export function WorkerTurnsView({
               <p className="small text-secondary mb-0">Nessun profilo worker associato a questo calendario.</p>
             ) : (
               <>
-                <div className="border rounded-3 p-3 mb-3 bg-light">
-                  <p className="small fw-semibold mb-1">Colore nella griglia</p>
-                  <p className="small text-secondary mb-2">
-                    Di base il colore è quello impostato sulla scheda persona dall&apos;organizzazione. Qui puoi definire un colore
-                    solo per questo calendario (sovrascrive il default nei turni di questa squadra).
-                  </p>
-                  <ColorPalettePicker value={effectiveColor} onChange={(hex) => setMyColorDraft(hex)} disabled={colorSaving} label="Colore persona" />
-                  <div className="d-flex flex-wrap align-items-center gap-2 mt-2">
-                    <button
-                      type="button"
-                      className="btn btn-sm btn-success"
-                      disabled={colorSaving || !/^#[0-9A-Fa-f]{6}$/.test(effectiveColor) || !colorDraftDirty}
-                      onClick={() => {
-                        void (async () => {
-                          setColorSaving(true);
-                          setColorMsg(null);
-                          const res = await fetch(`/api/calendar-members/${myMember.id}`, {
-                            method: "PATCH",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ color: effectiveColor }),
-                          });
-                          setColorSaving(false);
-                          if (!res.ok) {
-                            setColorMsg("Salvataggio colore non riuscito.");
-                            return;
-                          }
-                          setColorMsg("Colore aggiornato.");
-                          setMyColorDraft(null);
-                          router.refresh();
-                        })();
-                      }}
-                    >
-                      {colorSaving ? "Salvo..." : "Salva colore"}
-                    </button>
-                    {colorMsg ? <span className="small text-secondary">{colorMsg}</span> : null}
+                <p className="small text-secondary mb-3">
+                  Per aggiornare nome, email o password usa <strong>I miei dati</strong> nel menu laterale.
+                </p>
+                <div className="row g-3 mb-4">
+                  <div className="col-md-4">
+                    <div className="border rounded-3 p-3 h-100 bg-white shadow-sm">
+                      <div className="small text-secondary">Persona</div>
+                      <div className="fw-semibold">{myMember.label}</div>
+                    </div>
+                  </div>
+                  <div className="col-md-4">
+                    <div className="border rounded-3 p-3 h-100 bg-white shadow-sm">
+                      <div className="small text-secondary">Turni nel periodo</div>
+                      <div className="fw-semibold">{myAssignments.length}</div>
+                    </div>
+                  </div>
+                  <div className="col-md-4">
+                    <div className="border rounded-3 p-3 h-100 bg-white shadow-sm">
+                      <div className="small text-secondary">Ore totali (stimato)</div>
+                      <div className="fw-semibold">{Math.round(myHours * 10) / 10}</div>
+                    </div>
                   </div>
                 </div>
-                <div className="row g-2 mb-3">
-                  <div className="col-md-4"><div className="border rounded-3 p-3"><div className="small text-secondary">Persona</div><div className="fw-semibold">{myMember.label}</div></div></div>
-                  <div className="col-md-4"><div className="border rounded-3 p-3"><div className="small text-secondary">Turni</div><div className="fw-semibold">{myAssignments.length}</div></div></div>
-                  <div className="col-md-4"><div className="border rounded-3 p-3"><div className="small text-secondary">Ore totali</div><div className="fw-semibold">{Math.round(myHours * 10) / 10}</div></div></div>
-                </div>
-                <div className="table-responsive">
-                  <table className="table table-sm table-bordered mb-0">
-                    <thead><tr><th>Data</th><th>Turno</th><th>Orario</th></tr></thead>
-                    <tbody>
-                      {myAssignments.map((a) => {
-                        const st = shiftTypes.find((s) => s.id === a.shiftTypeId);
-                        return (
-                          <tr key={`mine-${a.id}`}>
-                            <td>{formatDateIt(a.date)}</td>
-                            <td>{a.shiftTypeName}</td>
-                            <td>{st ? `${st.startTime} - ${st.endTime}` : "-"}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+
+                <h3 className="h6 fw-semibold mb-3">Elenco turni</h3>
+                {myAssignments.length === 0 ? (
+                  <p className="small text-secondary mb-0">Nessun turno assegnato in questo periodo.</p>
+                ) : (
+                  <ul className="list-unstyled d-grid gap-3 mb-0 worker-shift-card-list">
+                    {myAssignments.map((a) => {
+                      const st = shiftTypes.find((s) => s.id === a.shiftTypeId);
+                      const bar = st?.color ?? a.shiftTypeColor ?? "#1f7a3f";
+                      return (
+                        <li key={`mine-card-${a.id}`}>
+                          <article
+                            className="worker-shift-card border rounded-3 overflow-hidden bg-white shadow-sm d-flex"
+                            style={{ borderLeftWidth: 5, borderLeftColor: bar }}
+                          >
+                            <div className="p-3 flex-grow-1 min-w-0">
+                              <div className="d-flex flex-wrap align-items-baseline justify-content-between gap-2 mb-1">
+                                <time className="fw-semibold text-capitalize" dateTime={a.date}>
+                                  {formatDateIt(a.date)}
+                                </time>
+                                <span className="small text-secondary">{formatDateShort(a.date)}</span>
+                              </div>
+                              <div className="fw-semibold" style={{ color: bar }}>
+                                {a.shiftTypeName}
+                              </div>
+                              {st ? (
+                                <p className="small text-secondary mb-0 mt-1">
+                                  {st.startTime} – {st.endTime}
+                                </p>
+                              ) : null}
+                            </div>
+                            <div
+                              className="d-none d-sm-flex align-items-stretch px-2"
+                              style={{ background: `${bar}14`, minWidth: 52 }}
+                              aria-hidden
+                            />
+                          </article>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
               </>
             )}
           </div>

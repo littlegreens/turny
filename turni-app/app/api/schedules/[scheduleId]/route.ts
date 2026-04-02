@@ -90,16 +90,6 @@ export async function PATCH(request: Request, { params }: Params) {
     nextMonth = d.getUTCMonth() + 1;
   }
 
-  if (nextYear !== schedule.year || nextMonth !== schedule.month) {
-    const conflict = await prisma.schedule.findFirst({
-      where: { calendarId: schedule.calendarId, year: nextYear, month: nextMonth, id: { not: schedule.id } },
-      select: { id: true },
-    });
-    if (conflict) {
-      return NextResponse.json({ error: "Esiste gia un turno per questo calendario nel periodo indicato" }, { status: 409 });
-    }
-  }
-
   const updated = await prisma.schedule.update({
     where: { id: scheduleId },
     data: {

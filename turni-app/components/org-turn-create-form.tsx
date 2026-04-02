@@ -80,6 +80,7 @@ export function OrgTurnCreateForm({ orgSlug, calendars, canCreate, onCreated }: 
         <p className="small text-secondary mb-1">
           Scegli il <strong>calendario</strong> e il <strong>tipo di periodo</strong> dei turni: mensile, settimanale o intervallo date — dipende da come lavora quel calendario, non da una regola fissa.
           Per il settimanale, la data fine viene calcolata dalla data inizio.
+          Puoi avere <strong>più turni</strong> sullo stesso periodo (es. prove o scenari): distingui con un <strong>nome turno</strong> diverso.
         </p>
       </div>
       <div className="col-12">

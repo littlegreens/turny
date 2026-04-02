@@ -233,7 +233,7 @@ model Schedule {
   monthlyConstraints MonthlyConstraint[]
   assignments ShiftAssignment[]
 
-  @@unique([calendarId, year, month])
+  @@index([calendarId, year, month])
 }
 
 model MonthlyConstraint {

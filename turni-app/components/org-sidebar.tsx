@@ -87,6 +87,17 @@ export function OrgSidebar({ orgSlug, orgName, isWorkerOnly = false, isSuperAdmi
             </Link>
           </>
         ) : null}
+        {isWorkerOnly ? (
+          <Link
+            href={`/${orgSlug}/members`}
+            onClick={onNavigate}
+            className={`sidebar-link mt-2 ${isPersoneActive ? "active" : ""}`}
+            title="I miei dati"
+          >
+            <Image src="/person.svg" alt="" width={24} height={24} />
+            {!compact ? <span className="turny-sidebar-label">I miei dati</span> : null}
+          </Link>
+        ) : null}
         <Link
           href={`/${orgSlug}/turni`}
           onClick={onNavigate}

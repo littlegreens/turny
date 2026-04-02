@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { canManageCalendarRoster } from "@/lib/calendar-membership-access";
+import { hasAnyRole, normalizeRoles } from "@/lib/org-roles";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 
@@ -59,7 +60,20 @@ export async function PATCH(request: Request, { params }: Params) {
   if (!parsed.success) return NextResponse.json({ error: "Colore non valido" }, { status: 400 });
 
   const isSelf = row.userId === session.user.id;
-  if (!isSelf) {
+  if (isSelf) {
+    const orgMember = await prisma.orgMember.findFirst({
+      where: { userId: session.user.id, orgId: row.calendar.orgId },
+    });
+    if (orgMember) {
+      const roles = normalizeRoles([orgMember.role, ...orgMember.roles]);
+      if (!hasAnyRole(roles, ["OWNER", "ADMIN", "MANAGER"])) {
+        return NextResponse.json(
+          { error: "Solo i responsabili possono impostare il colore in calendario." },
+          { status: 403 },
+        );
+      }
+    }
+  } else {
     const access = await canManageCalendarRoster(session.user.id, row.calendarId);
     if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status });
   }

@@ -173,14 +173,19 @@ export function ShiftTypeCreateForm({ calId, canCreate, roleOptions = [], onCrea
       </div>
       <div className="col-12">
         <label className="form-label small mb-1">Ruoli per slot</label>
-        <div className="d-grid gap-2">
+        <div className="shift-role-slot-rows">
           {normalizeRoleSlots(minStaff, roleSlots).map((v, idx) => (
-            <div key={idx} className="d-flex align-items-center gap-2">
-              <span className="small text-secondary" style={{ minWidth: 64 }}>
-                Slot {idx + 1}
+            <div key={idx} className="shift-role-slot-row">
+              <span className="shift-role-slot-pin shift-role-slot-pin--slot">Slot {idx + 1}</span>
+              <span
+                className={`shift-role-slot-pin ${v ? "shift-role-slot-pin--role" : "shift-role-slot-pin--neutral"}`}
+                title={v ?? "Indifferente"}
+              >
+                {v ?? "Indifferente"}
               </span>
               <select
-                className="form-select input-underlined"
+                className="form-select form-select-sm shift-role-slot-select"
+                aria-label={`Ruolo slot ${idx + 1}`}
                 value={v ?? ""}
                 onChange={(e) => {
                   const next = e.target.value ? e.target.value : null;

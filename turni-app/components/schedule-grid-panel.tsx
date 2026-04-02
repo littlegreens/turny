@@ -19,6 +19,13 @@ import {
   buildSolverRelaxationCellHighlights,
   hasUserVisibleSolverRelaxation,
 } from "@/lib/solver-relaxations-report";
+import {
+  SCHEDULE_PREVIEW_ZOOM_LEVELS,
+  buildSchedulePreviewCalendarWeekRows,
+  ScheduleReadonlyCalendarWeeks,
+  ScheduleReadonlyStandardTable,
+  type SchedulePreviewMemberColor,
+} from "@/components/schedule-readonly-preview";
 
 type ShiftTypeCol = {
   id: string;
@@ -113,6 +120,9 @@ type Props = {
 function pad(n: number) {
   return String(n).padStart(2, "0");
 }
+
+/** Livelli zoom solo per l’area griglia del configuratore (tabella / calendario). */
+const CONFIG_GRID_ZOOM_LEVELS = [0.72, 0.82, 0.92, 1, 1.12, 1.26, 1.42] as const;
 
 function daysInMonth(year: number, month: number) {
   return new Date(year, month, 0).getDate();
@@ -294,6 +304,14 @@ export function ScheduleGridPanel({
     Array.isArray(initialSolverAlerts) ? initialSolverAlerts : [],
   );
   const [viewMode, setViewMode] = useState<"standard" | "calendar" | "mine">("standard");
+  /** Vista principale del configuratore (griglia tabellare vs settimane). */
+  const [configGridView, setConfigGridView] = useState<"standard" | "calendar">("standard");
+  /** Filtro ruolo professionale (solo visualizzazione elenco e chip). */
+  const [configRoleFilter, setConfigRoleFilter] = useState("");
+  const [configGridZoomIdx, setConfigGridZoomIdx] = useState(3);
+  const configGridZoom = CONFIG_GRID_ZOOM_LEVELS[configGridZoomIdx];
+  const [previewZoomIdx, setPreviewZoomIdx] = useState(3);
+  const previewZoom = SCHEDULE_PREVIEW_ZOOM_LEVELS[previewZoomIdx];
   const memberPopupBaselineRef = useRef<string>("");
   const previewStandardTableRef = useRef<HTMLDivElement | null>(null);
   const previewCalendarRef = useRef<HTMLDivElement | null>(null);
@@ -471,6 +489,8 @@ export function ScheduleGridPanel({
     };
   });
 
+  const previewCalendarWeekRows = useMemo(() => buildSchedulePreviewCalendarWeekRows(dates), [dates]);
+
   const unavailSet = useMemo(() => {
     const s = new Set<string>();
     for (const u of monthlyUnavailable) {
@@ -541,6 +561,32 @@ export function ScheduleGridPanel({
     }
     return m;
   }, [assignments]);
+
+  const gridAssignments = useMemo(() => {
+    if (!configRoleFilter) return assignments;
+    return assignments.filter((a) => {
+      if (a.isGuest) return false;
+      const m = members.find((x) => x.id === a.memberId);
+      if (!m) return false;
+      return parseProfessionalRoles(m.professionalRole).includes(configRoleFilter);
+    });
+  }, [assignments, configRoleFilter, members]);
+
+  const byCellDisplay = useMemo(() => {
+    const m = new Map<string, GridAssignment[]>();
+    for (const a of gridAssignments) {
+      const k = `${a.date}|${a.shiftTypeId}`;
+      const list = m.get(k) ?? [];
+      list.push(a);
+      m.set(k, list);
+    }
+    return m;
+  }, [gridAssignments]);
+
+  const membersForSidebar = useMemo(() => {
+    if (!configRoleFilter) return members;
+    return members.filter((m) => parseProfessionalRoles(m.professionalRole).includes(configRoleFilter));
+  }, [members, configRoleFilter]);
 
   const countByCell = useMemo(() => {
     const m = new Map<string, number>();
@@ -771,6 +817,12 @@ export function ScheduleGridPanel({
     return m;
   }, [members]);
 
+  const previewMemberColorById = useMemo(() => {
+    const m = new Map<string, SchedulePreviewMemberColor>();
+    for (const x of members) m.set(x.id, { memberColor: x.memberColor });
+    return m;
+  }, [members]);
+
   function chipColorsForAssignment(a: GridAssignment) {
     if (a.isGuest) {
       const c = a.guestColor ?? "#6b7280";
@@ -989,42 +1041,54 @@ export function ScheduleGridPanel({
             .badge { display: inline-block; padding: 2px 6px; border-radius: 999px; font-size: 11px; border: 1px solid #d5d7da; }
             .col-12, .col-md-6, .col-xl-4 { width: auto; }
             .row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-            /* Vista calendario: griglia fissa 3x3 per pagina (9 giorni) */
-            body.print-calendar .row.g-2 {
-              display: grid !important;
-              grid-template-columns: repeat(3, minmax(0, 1fr));
-              grid-template-rows: repeat(3, auto);
-              gap: 5mm;
-              align-items: stretch;
+            /* Vista calendario: una riga = una settimana (7 colonne) */
+            body.print-calendar .preview-calendar-weeks {
+              display: block;
             }
-            body.print-calendar .row.g-2 > [class*="col-"] {
+            body.print-calendar .calendar-dow-header.d-grid {
+              display: grid !important;
+              grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
+              gap: 2mm !important;
+              font-size: 9px !important;
+              margin-bottom: 2mm !important;
+            }
+            body.print-calendar .calendar-week-row {
+              display: grid !important;
+              grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
+              gap: 2mm !important;
+              align-items: stretch;
+              break-inside: avoid;
+              page-break-inside: avoid;
+              margin-bottom: 3mm !important;
+            }
+            body.print-calendar .calendar-day-cell {
               min-width: 0;
               break-inside: avoid;
               page-break-inside: avoid;
             }
-            body.print-calendar .row.g-2 > [class*="col-"] > .rounded-3 {
+            body.print-calendar .calendar-day-cell--empty {
+              visibility: hidden;
+              min-height: 1mm;
+            }
+            body.print-calendar .calendar-day-cell > .rounded-3 {
               min-height: auto !important;
               height: auto !important;
               overflow: visible;
               display: flex;
               flex-direction: column;
             }
-            body.print-calendar .row.g-2 > [class*="col-"] > .rounded-3 > .d-grid.gap-2 {
+            body.print-calendar .calendar-day-cell > .rounded-3 > .d-grid.gap-1 {
               flex: 1 1 auto;
-              gap: 4px !important;
+              gap: 3px !important;
             }
-            body.print-calendar .row.g-2 > [class*="col-"] > .rounded-3 .small.fw-semibold {
+            body.print-calendar .calendar-day-cell .small.fw-semibold {
               font-size: 10px !important;
               line-height: 1.2;
             }
-            body.print-calendar .row.g-2 > [class*="col-"] > .rounded-3 .rounded-2 {
+            body.print-calendar .calendar-day-cell .rounded-2 {
               padding: 3px 5px !important;
               font-size: 9px !important;
               line-height: 1.2;
-            }
-            body.print-calendar .row.g-2 > [class*="col-"]:nth-child(9n) {
-              break-after: page;
-              page-break-after: always;
             }
             body.print-calendar h1 { font-size: 13px; margin: 0 0 4px; }
             body.print-calendar > .small { font-size: 10px; margin: 0 0 5px; }
@@ -1698,15 +1762,179 @@ export function ScheduleGridPanel({
     }, 0);
   }
 
+  function renderAssignmentChip(a: GridAssignment, forCalendar?: boolean) {
+    const { stdBg, stdColor } = chipColorsForAssignment(a);
+    const issueDetail = getAssignmentIssueDetails(a);
+    const solverHint = getSolverRelaxationChipHint(a);
+    const issue = issueDetail?.message ?? solverHint ?? null;
+    const issueIsWarning = issueDetail?.variant === "warning" && !solverHint;
+    return (
+      <div
+        key={a.id}
+        className={`d-inline-flex align-items-center rounded-2 ${forCalendar ? "gap-1 px-2 py-1 config-cal-chip" : "gap-2 px-3 py-2"} ${chipClass(a)}`}
+        style={{
+          backgroundColor: stdBg,
+          borderColor:
+            issueIsWarning ? "#ffc107" : issueDetail?.variant === "error" || solverHint ? "#dc3545" : undefined,
+          maxWidth: "100%",
+          cursor: canEdit ? "grab" : "default",
+        }}
+        draggable={canEdit}
+        onClick={(e) => e.stopPropagation()}
+        onDragStart={(e) => {
+          e.dataTransfer.setData("application/x-assignment-id", a.id);
+          e.dataTransfer.effectAllowed = "move";
+          setDragging(true);
+          setDragGhost(e, a.memberLabel);
+        }}
+        onDragEnd={() => {
+          setDragging(false);
+          setHoverCellKey(null);
+        }}
+      >
+        {a.isGuest ? (
+          <span className="badge rounded-pill text-bg-secondary align-self-center" style={{ fontSize: 9 }}>
+            Extra
+          </span>
+        ) : null}
+        <span
+          className={`small fw-semibold text-truncate ${forCalendar ? "config-cal-chip-label" : ""}`}
+          style={{
+            color: stdColor,
+            maxWidth: forCalendar ? "100%" : 120,
+            flex: forCalendar ? "1 1 0" : undefined,
+          }}
+          title={a.memberLabel}
+        >
+          {a.memberLabel}
+        </span>
+        {issue ? (
+          <span
+            className={`small fw-semibold ${issueIsWarning ? "text-warning-emphasis" : "text-danger"}`}
+            style={{ fontSize: 11 }}
+            title={issue}
+          >
+            !
+          </span>
+        ) : null}
+        {canEdit ? (
+          <button
+            type="button"
+            className="border-0 bg-transparent d-inline-flex align-items-center justify-content-center"
+            aria-label="Rimuovi"
+            disabled={loadingKey !== null}
+            onClick={() => setDeleteId(a.id)}
+            style={{ width: 18, height: 18, color: "#b42318", borderRadius: "50%" }}
+          >
+            <span style={{ fontSize: 14, lineHeight: 1 }}>✕</span>
+          </button>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <div>
-      {canManageSchedule || canEdit ? (
-        <div className="mb-3 d-flex justify-content-end gap-2 flex-wrap">
-          {(canManageSchedule || canEdit) && (
-            <button className="btn btn-sm btn-outline-secondary" onClick={downloadGeneralIcs} disabled={loadingKey !== null}>
-              Esporta calendario
-            </button>
-          )}
+      {canManageSchedule && !canEdit ? (
+        <p className="small text-warning mb-0 mt-2">
+          <strong>Genera turni</strong> e le modifiche alla griglia sono solo in <strong>bozza</strong>: qui il periodo è{" "}
+          {scheduleStatus === "PUBLISHED" ? "pubblicato" : "archiviato"}. Ogni calendario segue gli stessi criteri; ciò che cambia è lo{" "}
+          <strong>stato di questo turno</strong>, non il calendario di appartenenza.
+        </p>
+      ) : null}
+
+      <section id="configuratore" className="mt-4">
+      {shiftTypes.length === 0 ? (
+        <div className="alert alert-warning border mb-0" role="status">
+          Nessun tipo turno attivo: apri il calendario dalla home organizzazione, sezione «Tipi di turno», e crea o riattiva almeno un turno.
+          Senza tipi di turno la griglia non è disponibile; il pulsante «Genera turni» resta disattivato finché non ce n’è almeno uno.
+        </div>
+      ) : (
+      <>
+      <div className="row g-3 mb-1 align-items-center">
+        <div className="col-12 col-xl-2 d-none d-xl-block" aria-hidden="true" />
+        <div className="col-12 col-xl-10 min-w-0">
+          <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-3 mb-3">
+        <div className="d-flex flex-wrap align-items-center gap-2">
+          <button
+            type="button"
+            className={`btn btn-sm ${configGridView === "standard" ? "btn-success" : "btn-outline-success"}`}
+            onClick={() => setConfigGridView("standard")}
+            aria-pressed={configGridView === "standard"}
+          >
+            <Image
+              src="/badge.svg"
+              alt=""
+              width={20}
+              height={20}
+              style={{ marginRight: 8, filter: configGridView === "standard" ? "brightness(0) invert(1)" : "none" }}
+            />
+            Standard
+          </button>
+          <button
+            type="button"
+            className={`btn btn-sm ${configGridView === "calendar" ? "btn-success" : "btn-outline-success"}`}
+            onClick={() => setConfigGridView("calendar")}
+            aria-pressed={configGridView === "calendar"}
+          >
+            <Image
+              src="/icon-calendar.svg"
+              alt=""
+              width={20}
+              height={20}
+              style={{ marginRight: 8, filter: configGridView === "calendar" ? "brightness(0) invert(1)" : "none" }}
+            />
+            Calendario
+          </button>
+          <label className="small text-secondary text-nowrap mb-0 d-flex align-items-center gap-1" htmlFor="config-role-filter">
+            Ruolo
+            <select
+              id="config-role-filter"
+              className="form-select form-select-sm"
+              style={{ width: "auto", minWidth: 140 }}
+              value={configRoleFilter}
+              onChange={(e) => setConfigRoleFilter(e.target.value)}
+              title={
+                roleOptions.length === 0
+                  ? "Nessun ruolo professionale definito sulle persone del calendario"
+                  : "Mostra solo persone e assegnazioni con questo ruolo"
+              }
+              disabled={roleOptions.length === 0}
+            >
+              <option value="">Tutti</option>
+              {roleOptions.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div className="d-flex flex-wrap align-items-center gap-2">
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-success d-inline-flex align-items-center justify-content-center px-2"
+            aria-label="Riduci zoom griglia"
+            title="Riduci zoom griglia"
+            disabled={configGridZoomIdx <= 0}
+            onClick={() => setConfigGridZoomIdx((i) => Math.max(0, i - 1))}
+          >
+            <span className="material-symbols-outlined" aria-hidden="true">
+              zoom_out
+            </span>
+          </button>
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-success d-inline-flex align-items-center justify-content-center px-2"
+            aria-label="Ingrandisci zoom griglia"
+            title="Ingrandisci zoom griglia"
+            disabled={configGridZoomIdx >= CONFIG_GRID_ZOOM_LEVELS.length - 1}
+            onClick={() => setConfigGridZoomIdx((i) => Math.min(CONFIG_GRID_ZOOM_LEVELS.length - 1, i + 1))}
+          >
+            <span className="material-symbols-outlined" aria-hidden="true">
+              zoom_in
+            </span>
+          </button>
           {(canManageSchedule || canEdit) && (
             <button className="btn btn-sm btn-outline-secondary" onClick={() => setPreviewOpen(true)} disabled={loadingKey !== null}>
               Visualizza
@@ -1728,25 +1956,11 @@ export function ScheduleGridPanel({
             </button>
           ) : null}
         </div>
-      ) : null}
-      {canManageSchedule && !canEdit ? (
-        <p className="small text-warning mb-0 mt-2">
-          <strong>Genera turni</strong> e le modifiche alla griglia sono solo in <strong>bozza</strong>: qui il periodo è{" "}
-          {scheduleStatus === "PUBLISHED" ? "pubblicato" : "archiviato"}. Ogni calendario segue gli stessi criteri; ciò che cambia è lo{" "}
-          <strong>stato di questo turno</strong>, non il calendario di appartenenza.
-        </p>
-      ) : null}
-
-      <section id="configuratore" className="mt-3">
-      {shiftTypes.length === 0 ? (
-        <div className="alert alert-warning border mb-0" role="status">
-          Nessun tipo turno attivo: apri il calendario dalla home organizzazione, sezione «Tipi di turno», e crea o riattiva almeno un turno.
-          Senza tipi di turno la griglia non è disponibile; il pulsante «Genera turni» resta disattivato finché non ce n’è almeno uno.
+          </div>
         </div>
-      ) : (
-      <>
+      </div>
       <div className="row g-3 align-items-stretch">
-        <div className="col-xl-3">
+        <div className="col-12 col-md-4 col-xl-2">
           <div
             style={{
               position: "sticky",
@@ -1757,11 +1971,13 @@ export function ScheduleGridPanel({
             }}
           >
             <section className="card shadow-none">
-              <div className="card-body">
-              <h2 className="h6 fw-semibold mb-2">Persone</h2>
-              
-              <div className="d-grid gap-1 mb-3">
-                {members.map((m) => (
+              <div className="card-body px-2 px-xl-3 py-3 pt-xl-2">
+              <h2 className="h6 fw-semibold mb-3 mt-1">Persone</h2>
+              {configRoleFilter && membersForSidebar.length === 0 ? (
+                <p className="small text-secondary mb-0">Nessuna persona con il ruolo selezionato.</p>
+              ) : null}
+              <div className="d-grid gap-1 mb-1">
+                {membersForSidebar.map((m) => (
                   <div key={m.id} className="position-relative">
                   <button
                     type="button"
@@ -1801,7 +2017,14 @@ export function ScheduleGridPanel({
             </section>
           </div>
         </div>
-        <div className="col-xl-9">
+        <div className="col-12 col-md-8 col-xl-10 min-w-0">
+      {configRoleFilter ? (
+        <p className="small text-secondary mb-3 mt-2">
+          Filtro ruolo attivo: conteggi, avvisi e vincoli usano <strong>tutte</strong> le assegnazioni; nella griglia vedi solo il ruolo selezionato.
+        </p>
+      ) : null}
+      <div className="config-grid-zoom-shell w-100 overflow-x-auto pt-1 mt-1" style={{ zoom: configGridZoom }}>
+      {configGridView === "standard" ? (
       <div className="table-responsive">
         <table className="table table-sm table-bordered align-middle mb-0" style={{ minWidth: 620, tableLayout: "fixed" }}>
           <thead className="position-sticky top-0 bg-white" style={{ zIndex: 2 }}>
@@ -1848,7 +2071,7 @@ export function ScheduleGridPanel({
                     <span className="text-secondary text-capitalize">{d.weekday}</span>
                   </th>
                   {shiftTypes.map((st) => {
-                    const cell = byCell.get(`${dateStr}|${st.id}`) ?? [];
+                    const cell = byCellDisplay.get(`${dateStr}|${st.id}`) ?? [];
                     const shiftInactive = !shiftActive(dateStr, st);
                     const shiftBg = shiftInactive ? "#f8f9fa" : `${st.color}1A`;
                     const underStaff =
@@ -1916,78 +2139,7 @@ export function ScheduleGridPanel({
                         }}
                       >
                         <div className="d-flex flex-wrap gap-1 align-items-center px-1" style={{ minHeight: 60 }}>
-                          {cell.map((a) => (
-                            (() => {
-                              const { stdBg, stdColor } = chipColorsForAssignment(a);
-                              const issueDetail = getAssignmentIssueDetails(a);
-                              const solverHint = getSolverRelaxationChipHint(a);
-                              const issue = issueDetail?.message ?? solverHint ?? null;
-                              const issueIsWarning = issueDetail?.variant === "warning" && !solverHint;
-                              return (
-                            <div
-                              key={a.id}
-                              className={`d-inline-flex align-items-center gap-2 rounded-2 px-3 py-2 ${chipClass(a)}`}
-                              style={{
-                                backgroundColor: stdBg,
-                                borderColor:
-                                  issueIsWarning
-                                    ? "#ffc107"
-                                    : issueDetail?.variant === "error" || solverHint
-                                      ? "#dc3545"
-                                      : undefined,
-                                maxWidth: "100%",
-                                cursor: canEdit ? "grab" : "default",
-                              }}
-                              draggable={canEdit}
-                              onClick={(e) => e.stopPropagation()}
-                              onDragStart={(e) => {
-                                e.dataTransfer.setData("application/x-assignment-id", a.id);
-                                e.dataTransfer.effectAllowed = "move";
-                                setDragging(true);
-                                setDragGhost(e, a.memberLabel);
-                              }}
-                              onDragEnd={() => {
-                                setDragging(false);
-                                setHoverCellKey(null);
-                              }}
-                            >
-                              {a.isGuest ? (
-                                <span className="badge rounded-pill text-bg-secondary align-self-center" style={{ fontSize: 9 }}>
-                                  Extra
-                                </span>
-                              ) : null}
-                              <span
-                                className="small fw-semibold text-truncate"
-                                style={{ color: stdColor, maxWidth: 120 }}
-                                title={a.memberLabel}
-                              >
-                                {a.memberLabel}
-                              </span>
-                              {issue ? (
-                                <span
-                                  className={`small fw-semibold ${issueIsWarning ? "text-warning-emphasis" : "text-danger"}`}
-                                  style={{ fontSize: 11 }}
-                                  title={issue}
-                                >
-                                  !
-                                </span>
-                              ) : null}
-                              {canEdit ? (
-                                <button
-                                  type="button"
-                                  className="border-0 bg-transparent d-inline-flex align-items-center justify-content-center"
-                                  aria-label="Rimuovi"
-                                  disabled={loadingKey !== null}
-                                  onClick={() => setDeleteId(a.id)}
-                                  style={{ width: 18, height: 18, color: "#b42318", borderRadius: "50%" }}
-                                >
-                                  <span style={{ fontSize: 14, lineHeight: 1 }}>✕</span>
-                                </button>
-                              ) : null}
-                            </div>
-                              );
-                            })()
-                          ))}
+                          {cell.map((a) => renderAssignmentChip(a))}
                         </div>
                       </td>
                     );
@@ -1997,6 +2149,147 @@ export function ScheduleGridPanel({
             })}
           </tbody>
         </table>
+      </div>
+      ) : (
+      <div className="config-calendar-weeks">
+        <div
+          className="calendar-dow-header d-grid gap-1 small text-secondary fw-semibold text-center mb-1"
+          style={{ gridTemplateColumns: "repeat(7, minmax(0, 1fr))" }}
+        >
+          {["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"].map((h) => (
+            <div key={`cfg-h-${h}`} className="py-1 min-w-0 text-truncate">
+              {h}
+            </div>
+          ))}
+        </div>
+        {previewCalendarWeekRows.map((week, wi) => (
+          <div
+            key={`cfg-week-${wi}`}
+            className="calendar-week-row d-grid gap-2 mb-2"
+            style={{ gridTemplateColumns: "repeat(7, minmax(0, 1fr))" }}
+          >
+            {week.map((d, di) => {
+              if (!d) {
+                return (
+                  <div
+                    key={`cfg-empty-${wi}-${di}`}
+                    className="calendar-day-cell calendar-day-cell--empty rounded-3 bg-light border border-light"
+                    aria-hidden="true"
+                  />
+                );
+              }
+              const dateStr = d.dateStr;
+              const inactiveDay = !shiftTypes.some((st) => shiftActive(dateStr, st));
+              const rowHasSolverSlot = shiftTypes.some(
+                (st) =>
+                  shiftActive(dateStr, st) &&
+                  relaxationHighlights.slotKeys.has(`${dateStr}|${st.id}`),
+              );
+              const rowGap =
+                (showCoverageGapHighlight && understaffedDates.has(dateStr)) || rowHasSolverSlot;
+              return (
+                <div key={`cfg-${dateStr}`} className="calendar-day-cell min-w-0">
+                  <div
+                    className={`rounded-3 p-2 h-100 d-flex flex-column border ${inactiveDay ? "bg-light" : "bg-white"}`}
+                    style={{
+                      minHeight: 200,
+                      boxShadow: rowGap ? "inset 4px 0 0 #dc3545" : undefined,
+                    }}
+                    title={
+                      rowHasSolverSlot
+                        ? "Almeno uno slot segnalato dal motore: vedi sotto la griglia"
+                        : rowGap
+                          ? "Questo giorno ha almeno uno slot sotto il minimo organico"
+                          : undefined
+                    }
+                  >
+                    <p className="fw-semibold small mb-1 text-truncate min-w-0" title={`${d.weekday} ${d.day}`}>
+                      <span className="text-capitalize">{d.weekday}</span> {d.day}
+                    </p>
+                    <div className="d-grid gap-1 flex-grow-1 align-content-start">
+                      {shiftTypes
+                        .filter((st) => shiftActive(dateStr, st))
+                        .map((st) => {
+                        const cell = byCellDisplay.get(`${dateStr}|${st.id}`) ?? [];
+                        const shiftBg = `${st.color}1A`;
+                        const underStaff =
+                          showCoverageGapHighlight && understaffedCells.keys.has(`${dateStr}|${st.id}`);
+                        const slotSolverFlag = relaxationHighlights.slotKeys.has(`${dateStr}|${st.id}`);
+                        const under = underStaff || slotSolverFlag;
+                        return (
+                          <div
+                            key={`cfg-${dateStr}-${st.id}`}
+                            className="rounded-2 p-2 d-flex flex-column calendar-shift-slot"
+                            style={{
+                              background: shiftBg,
+                              minHeight: 56,
+                              cursor: canEdit ? "copy" : "default",
+                              outline: hoverCellKey === `${dateStr}|${st.id}` ? "2px dashed #1f7a3f" : undefined,
+                              outlineOffset: 0,
+                              boxShadow: under ? "inset 0 0 0 2px #dc3545" : undefined,
+                            }}
+                            title={
+                              slotSolverFlag
+                                ? "Segnalato dal motore: dettaglio sotto la griglia"
+                                : underStaff
+                                  ? `Sottocopertura: ${cell.length}/${st.minStaff} — ${st.name}`
+                                  : canEdit
+                                    ? "Clic per aggiungere; trascina da elenco persone"
+                                    : undefined
+                            }
+                            onClick={(e) => {
+                              if (!canEdit) return;
+                              const el = e.target as HTMLElement;
+                              if (el.closest("button")) return;
+                              if (el.closest("[draggable='true']")) return;
+                              setCellAddOpen({ date: dateStr, shiftTypeId: st.id });
+                              setGuestNameDraft("");
+                              setGuestColorDraft("#6b7280");
+                            }}
+                            onDragOver={(e) => {
+                              if (!canEdit) return;
+                              e.preventDefault();
+                              setHoverCellKey(`${dateStr}|${st.id}`);
+                              const types = Array.from(e.dataTransfer.types ?? []);
+                              e.dataTransfer.dropEffect = types.includes("application/x-assignment-id") ? "move" : "copy";
+                            }}
+                            onDragLeave={() => {
+                              setHoverCellKey((prev) => (prev === `${dateStr}|${st.id}` ? null : prev));
+                            }}
+                            onDrop={(e) => {
+                              if (!canEdit) return;
+                              e.preventDefault();
+                              setHoverCellKey(null);
+                              const assignmentId = e.dataTransfer.getData("application/x-assignment-id");
+                              if (assignmentId) {
+                                void moveAssignment(assignmentId, dateStr, st.id);
+                                return;
+                              }
+                              const droppedMemberId = e.dataTransfer.getData("application/x-member-id") || dragMemberId;
+                              if (droppedMemberId) void addAssignment(dateStr, st.id, droppedMemberId);
+                            }}
+                          >
+                            <div className="small fw-semibold config-cal-shift-title" style={{ fontSize: "0.7rem" }} title={`${st.name} ${st.startTime}-${st.endTime}`}>
+                              {st.name}{" "}
+                              <span className="text-secondary fw-normal">
+                                {st.startTime}-{st.endTime}
+                              </span>
+                            </div>
+                            <div className="d-flex flex-wrap gap-1 mt-1 align-items-center flex-grow-1 config-cal-chips">
+                              {cell.map((a) => renderAssignmentChip(a, true))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+      )}
       </div>
         </div>
       </div>
@@ -2933,6 +3226,34 @@ export function ScheduleGridPanel({
                     </div>
                   </div>
                   <div className="d-flex align-items-center gap-2 flex-wrap">
+                    {viewMode === "standard" || viewMode === "calendar" ? (
+                      <>
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-success d-inline-flex align-items-center justify-content-center px-2"
+                          aria-label="Riduci zoom visualizzazione"
+                          title="Riduci zoom"
+                          disabled={previewZoomIdx <= 0}
+                          onClick={() => setPreviewZoomIdx((i) => Math.max(0, i - 1))}
+                        >
+                          <span className="material-symbols-outlined" aria-hidden="true">
+                            zoom_out
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-success d-inline-flex align-items-center justify-content-center px-2"
+                          aria-label="Ingrandisci zoom visualizzazione"
+                          title="Ingrandisci zoom"
+                          disabled={previewZoomIdx >= SCHEDULE_PREVIEW_ZOOM_LEVELS.length - 1}
+                          onClick={() => setPreviewZoomIdx((i) => Math.min(SCHEDULE_PREVIEW_ZOOM_LEVELS.length - 1, i + 1))}
+                        >
+                          <span className="material-symbols-outlined" aria-hidden="true">
+                            zoom_in
+                          </span>
+                        </button>
+                      </>
+                    ) : null}
                     <button type="button" className="btn btn-sm btn-outline-secondary" onClick={printPreviewTablePdf}>
                       Stampa PDF
                     </button>
@@ -2941,149 +3262,43 @@ export function ScheduleGridPanel({
                 </div>
                 <div className="modal-body p-3">
                   {viewMode === "standard" ? (
-                  <div className="table-responsive" ref={previewStandardTableRef}>
-                    <table className="table table-bordered align-middle mb-0" style={{ minWidth: 880, tableLayout: "fixed" }}>
-                      <thead className="position-sticky top-0 bg-white" style={{ zIndex: 2 }}>
-                        <tr>
-                          <th style={{ width: 100 }}>Giorno</th>
-                          {shiftTypes.map((st) => (
-                            <th key={`preview-${st.id}`} className="text-center">
-                              <div className="fw-semibold">{st.name}</div>
-                              <div className="small text-secondary">
-                                {st.startTime} - {st.endTime}
-                              </div>
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {days.map((d) => {
-                          const rowGapPrev = showCoverageGapHighlight && understaffedDates.has(d.dateStr);
-                          return (
-                          <tr key={`preview-row-${d.dateStr}`} style={{ height: 60 }}>
-                            <th
-                              className="p-0 align-middle ps-1 small"
-                              style={rowGapPrev ? { boxShadow: "inset 4px 0 0 #dc3545" } : undefined}
-                              title={
-                                showCoverageGapHighlight && understaffedDates.has(d.dateStr)
-                                  ? "Giorno con almeno uno slot sotto il minimo"
-                                  : undefined
-                              }
-                            >
-                              <div className="fw-semibold">{d.day}</div>
-                              <div className="small text-secondary text-capitalize">{d.weekday}</div>
-                            </th>
-                            {shiftTypes.map((st) => {
-                              const cell = byCell.get(`${d.dateStr}|${st.id}`) ?? [];
-                              const shiftInactive = !shiftActive(d.dateStr, st);
-                              const underStaffP =
-                                showCoverageGapHighlight &&
-                                !shiftInactive &&
-                                understaffedCells.keys.has(`${d.dateStr}|${st.id}`);
-                              return (
-                                <td
-                                  key={`preview-${d.dateStr}-${st.id}`}
-                                  className="align-middle p-0"
-                                  style={{
-                                    background: shiftInactive ? "#f8f9fa" : `${st.color}14`,
-                                    height: 60,
-                                    minHeight: 60,
-                                    maxHeight: 60,
-                                    verticalAlign: "middle",
-                                    boxShadow: underStaffP ? "inset 0 0 0 2px #dc3545" : undefined,
-                                  }}
-                                  title={
-                                    underStaffP ? `Sottocopertura: ${cell.length}/${st.minStaff}` : undefined
-                                  }
-                                >
-                                  <div className="d-flex flex-wrap gap-1 align-items-center px-1" style={{ minHeight: 60 }}>
-                                    {cell.map((a) => {
-                                      const { previewBg, previewColor } = chipColorsForAssignment(a);
-                                      return (
-                                        <span
-                                          key={`preview-chip-${a.id}`}
-                                          className="d-inline-flex align-items-center rounded-2 px-3 py-2 small fw-semibold"
-                                          style={{ backgroundColor: previewBg, color: previewColor }}
-                                        >
-                                          {a.isGuest ? "· " : ""}
-                                          {a.memberLabel}
-                                        </span>
-                                      );
-                                    })}
-                                  </div>
-                                </td>
-                              );
-                            })}
-                          </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+                    <div className="w-100 overflow-x-auto" style={{ zoom: previewZoom }}>
+                      <ScheduleReadonlyStandardTable
+                        days={days}
+                        shiftTypes={shiftTypes}
+                        byCell={byCell}
+                        memberById={previewMemberColorById}
+                        isShiftActive={(ds, st) => shiftActive(ds, st as ShiftTypeCol)}
+                        rowUndersupplied={
+                          showCoverageGapHighlight ? (dateStr) => understaffedDates.has(dateStr) : undefined
+                        }
+                        cellUndersupplied={
+                          showCoverageGapHighlight
+                            ? (dateStr, shiftTypeId) => understaffedCells.keys.has(`${dateStr}|${shiftTypeId}`)
+                            : undefined
+                        }
+                        tableRef={previewStandardTableRef}
+                      />
+                    </div>
                   ) : null}
                   {viewMode === "calendar" ? (
-                    <div className="row g-2" ref={previewCalendarRef}>
-                      {days.map((d) => {
-                        const shiftTypesThisDay = shiftTypes.filter((st) => shiftActive(d.dateStr, st));
-                        const dayGap = showCoverageGapHighlight && understaffedDates.has(d.dateStr);
-                        return (
-                          <div key={`cal-${d.dateStr}`} className="col-12 col-md-6 col-xl-4 d-flex">
-                            <div
-                              className={`rounded-3 p-2 bg-white flex-grow-1 d-flex flex-column ${dayGap ? "border border-2 border-danger" : "border"}`}
-                              style={{ minHeight: 280 }}
-                              title={
-                                showCoverageGapHighlight && understaffedDates.has(d.dateStr)
-                                  ? "Giorno con almeno uno slot sotto il minimo organico"
-                                  : undefined
-                              }
-                            >
-                              <p className="fw-semibold mb-2">{d.weekday} {d.day}</p>
-                              <div className="d-grid gap-2 flex-grow-1 align-content-start">
-                                {shiftTypesThisDay.map((st) => {
-                                  const cell = byCell.get(`${d.dateStr}|${st.id}`) ?? [];
-                                  const underStaffC = showCoverageGapHighlight && understaffedCells.keys.has(`${d.dateStr}|${st.id}`);
-                                  return (
-                                    <div
-                                      key={`cal-${d.dateStr}-${st.id}`}
-                                      className="rounded-2 p-2 d-flex flex-column"
-                                      style={{
-                                        background: `${st.color}18`,
-                                        minHeight: 76,
-                                        boxShadow: underStaffC ? "inset 0 0 0 2px #dc3545" : undefined,
-                                      }}
-                                      title={underStaffC ? `Sottocopertura: ${cell.length}/${st.minStaff}` : undefined}
-                                    >
-                                      <div className="small fw-semibold">
-                                        {st.name} <span className="text-secondary fw-normal">{st.startTime}-{st.endTime}</span>
-                                      </div>
-                                      <div className="d-flex flex-wrap gap-1 mt-1 flex-grow-1 align-items-center">
-                                        {cell.length === 0 ? <span className="small text-secondary">—</span> : null}
-                                        {cell.slice(0, 3).map((a) => {
-                                          const { previewBg, previewColor } = chipColorsForAssignment(a);
-                                          return (
-                                            <span
-                                              key={`cal-chip-${a.id}`}
-                                              className="d-inline-flex rounded-2 px-3 py-2 small fw-semibold"
-                                              style={{
-                                                backgroundColor: previewBg,
-                                                color: previewColor,
-                                              }}
-                                            >
-                                              {a.isGuest ? "· " : ""}
-                                              {a.memberLabel}
-                                            </span>
-                                          );
-                                        })}
-                                        {cell.length > 3 ? <span className="badge text-bg-light">+{cell.length - 3}</span> : null}
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
+                    <div className="w-100 overflow-x-auto" style={{ zoom: previewZoom }}>
+                      <ScheduleReadonlyCalendarWeeks
+                        calendarWeekRows={previewCalendarWeekRows}
+                        shiftTypes={shiftTypes}
+                        byCell={byCell}
+                        memberById={previewMemberColorById}
+                        isShiftActive={(ds, st) => shiftActive(ds, st as ShiftTypeCol)}
+                        rowUndersupplied={
+                          showCoverageGapHighlight ? (dateStr) => understaffedDates.has(dateStr) : undefined
+                        }
+                        cellUndersupplied={
+                          showCoverageGapHighlight
+                            ? (dateStr, shiftTypeId) => understaffedCells.keys.has(`${dateStr}|${shiftTypeId}`)
+                            : undefined
+                        }
+                        calendarRef={previewCalendarRef}
+                      />
                     </div>
                   ) : null}
                   {viewMode === "mine" ? (

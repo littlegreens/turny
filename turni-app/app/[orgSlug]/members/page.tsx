@@ -8,6 +8,7 @@ import { fetchOrgMemberDisplayColors } from "@/lib/org-member-display-colors";
 import { distinctProfessionalRolesFromMembers } from "@/lib/org-professional-roles";
 import { prisma } from "@/lib/prisma";
 import { isSuperAdminEmail } from "@/lib/super-admin";
+import { WorkerOrgSelfService } from "@/components/worker-org-self-service";
 
 type Props = {
   params: Promise<{ orgSlug: string }>;
@@ -26,6 +27,45 @@ export default async function OrgMembersPage({ params }: Props) {
   if (!membership && !superAdmin) notFound();
   const orgId = membership?.orgId ?? (await prisma.organization.findUnique({ where: { slug: orgSlug }, select: { id: true } }))?.id;
   if (!orgId) notFound();
+
+  const effectiveRolesEarly = membership ? normalizeRoles([membership.role, ...membership.roles]) : ["OWNER", "ADMIN"];
+  const isWorkerOnly = !hasAnyRole(effectiveRolesEarly, ["OWNER", "ADMIN", "MANAGER"]);
+
+  if (isWorkerOnly) {
+    const myOrgMember = await prisma.orgMember.findFirst({
+      where: { orgId, userId: session.user.id },
+      include: { user: { select: { firstName: true, lastName: true, email: true } } },
+    });
+    if (!myOrgMember) notFound();
+
+    const displayLabel =
+      `${`${myOrgMember.user.firstName} ${myOrgMember.user.lastName}`.trim() || myOrgMember.user.email}`;
+
+    return (
+      <>
+        <AppBreadcrumbs
+          items={[
+            { label: "Home", href: "/" },
+            { label: "I miei dati" },
+          ]}
+        />
+
+        <h2 className="h2 mt-3">I miei dati</h2>
+        <p className="text-secondary mb-0">
+          Aggiorna i dati del tuo account per questa organizzazione (nome, cognome, email e password).
+        </p>
+
+        <WorkerOrgSelfService
+          profile={{
+            firstName: myOrgMember.user.firstName,
+            lastName: myOrgMember.user.lastName,
+            email: myOrgMember.user.email,
+          }}
+          displayLabel={displayLabel}
+        />
+      </>
+    );
+  }
 
   const members = await prisma.orgMember.findMany({
     where: { orgId },
@@ -143,9 +183,6 @@ export default async function OrgMembersPage({ params }: Props) {
   }, {});
 
   const effectiveRoles = membership ? normalizeRoles([membership.role, ...membership.roles]) : ["OWNER", "ADMIN"];
-  if (!hasAnyRole(effectiveRoles, ["OWNER", "ADMIN", "MANAGER"])) {
-    redirect(`/${orgSlug}/turni`);
-  }
   const canManage = effectiveRoles.some((r) => ["OWNER", "ADMIN", "MANAGER"].includes(r));
   const canEditRole = effectiveRoles.some((r) => ["OWNER", "ADMIN", "MANAGER"].includes(r));
   const canAssignAdmin = effectiveRoles.some((r) => ["OWNER", "ADMIN"].includes(r));

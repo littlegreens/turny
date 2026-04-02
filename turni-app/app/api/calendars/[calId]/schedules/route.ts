@@ -112,19 +112,6 @@ export async function POST(request: Request, { params }: Params) {
     month = start.getUTCMonth() + 1;
   }
 
-  const exists = await prisma.schedule.findUnique({
-    where: {
-      calendarId_year_month: {
-        calendarId: calId,
-        year,
-        month,
-      },
-    },
-  });
-  if (exists) {
-    return NextResponse.json({ error: "Schedule del mese gia esistente" }, { status: 409 });
-  }
-
   const schedule = await prisma.schedule.create({
     data: {
       calendarId: calId,

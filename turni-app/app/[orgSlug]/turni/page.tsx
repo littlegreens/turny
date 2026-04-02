@@ -9,6 +9,7 @@ import { fetchOrgMemberDisplayColors } from "@/lib/org-member-display-colors";
 import { prisma } from "@/lib/prisma";
 import { resolveMemberRowColor } from "@/lib/member-row-color";
 import { isSuperAdminEmail } from "@/lib/super-admin";
+import { parseHolidayOverrides, type HolidayOverrideDraft } from "@/lib/holiday-overrides";
 
 type Props = {
   params: Promise<{ orgSlug: string }>;
@@ -60,10 +61,15 @@ export default async function OrgTurnsPage({ params, searchParams }: Props) {
 
     const selectedCalendarId = calendars.some((c) => c.id === qs?.calendarId) ? qs?.calendarId : calendars[0].id;
     const selectedCalendar = calendars.find((c) => c.id === selectedCalendarId)!;
-    const schedule = await prisma.schedule.findFirst({
-      where: { calendarId: selectedCalendarId, status: { not: "ARCHIVED" } },
-      orderBy: [{ year: "desc" }, { month: "desc" }, { createdAt: "desc" }],
-    });
+    const schedule =
+      (await prisma.schedule.findFirst({
+        where: { calendarId: selectedCalendarId, status: "PUBLISHED" },
+        orderBy: [{ year: "desc" }, { month: "desc" }, { publishedAt: "desc" }],
+      })) ??
+      (await prisma.schedule.findFirst({
+        where: { calendarId: selectedCalendarId, status: "DRAFT" },
+        orderBy: [{ year: "desc" }, { month: "desc" }, { createdAt: "desc" }],
+      }));
 
     return (
       <>
@@ -238,6 +244,14 @@ async function WorkerTurnsPreviewContainer({ scheduleId, currentUserId }: { sche
   });
 
   const periodMeta = (schedule.generationLog ?? {}) as { startDate?: string; endDate?: string };
+  const holidayOverridesMerged = (() => {
+    const m = new Map<string, unknown>();
+    for (const h of parseHolidayOverrides(schedule.calendar.rules)) m.set(h.date, h);
+    for (const h of parseHolidayOverrides(schedule.rules)) m.set(h.date, h);
+    return [...m.values()] as HolidayOverrideDraft[];
+  })();
+
+  /** Profilo account: il worker lo gestisce da «I miei dati» (/members), non da qui. */
   return (
     <WorkerTurnsView
       year={schedule.year}
@@ -245,12 +259,14 @@ async function WorkerTurnsPreviewContainer({ scheduleId, currentUserId }: { sche
       startDate={periodMeta.startDate}
       endDate={periodMeta.endDate}
       currentUserId={currentUserId}
+      holidayOverrides={holidayOverridesMerged}
       shiftTypes={shiftTypes.map((st) => ({
         id: st.id,
         name: st.name,
         startTime: st.startTime,
         endTime: st.endTime,
         color: st.color,
+        minStaff: st.minStaff,
         activeWeekdays: st.activeWeekdays,
       }))}
       members={members}
