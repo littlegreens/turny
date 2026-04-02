@@ -45,6 +45,7 @@ def generate(body: GenerateBody):
             "message": out.get("message", "Impossibile."),
             "calendar": None,
             "assignments": [],
+            "alerts": out.get("alerts") or [],
         }
     if status in ("OPTIMAL", "FEASIBLE"):
         return {
@@ -58,4 +59,5 @@ def generate(body: GenerateBody):
         "status": status,
         "message": out.get("message", "Errore solver."),
         "assignments": [],
+        "alerts": out.get("alerts") or [],
     }

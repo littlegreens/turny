@@ -94,9 +94,10 @@ export async function PUT(req: Request, { params }: Params) {
       })),
     };
 
+    const prevRules = (access.schedule.rules ?? {}) as Record<string, unknown>;
     const updated = await prisma.schedule.update({
       where: { id: scheduleId },
-      data: { rules: cleaned },
+      data: { rules: { ...prevRules, ...cleaned } },
       select: { id: true, rules: true },
     });
     return NextResponse.json({ schedule: updated });

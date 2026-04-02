@@ -1,5 +1,7 @@
 /** Calcoli riepilogo schedule (Passo 3 brain): ore, copertura min/max staff. */
 
+import { isShiftActiveOnDate, type HolidayOverrideDraft } from "./holiday-overrides";
+
 export type ShiftTypeForReport = {
   id: string;
   name: string;
@@ -11,9 +13,12 @@ export type ShiftTypeForReport = {
 };
 
 export type AssignmentForReport = {
-  memberId: string;
+  /** Membro calendario; assente se persona extra. */
+  memberId?: string;
   shiftTypeId: string;
   date: string;
+  guestLabel?: string | null;
+  guestColor?: string | null;
 };
 
 export type CoverageAlert = {
@@ -37,6 +42,15 @@ export type MemberReportRow = {
   sunCount: number;
   hoursTotal: number;
   contractMode: "SHIFTS" | "HOURS";
+};
+
+/** Persone extra (tappabuchi) aggregate per nome+colore. */
+export type ExtraReportRow = {
+  key: string;
+  label: string;
+  color: string | null;
+  shiftCount: number;
+  hoursTotal: number;
 };
 
 function pad2(n: number) {
@@ -63,12 +77,16 @@ export function buildScheduleReport(input: {
     professionalRole: string;
     contractMode: "SHIFTS" | "HOURS";
   }[];
+  /** Da calendar.rules (festivi) — stessa forma di `parseHolidayOverrides`. */
+  holidayOverrides?: HolidayOverrideDraft[];
 }): {
   memberRows: MemberReportRow[];
+  extraRows: ExtraReportRow[];
   coverageAlerts: CoverageAlert[];
   totals: { assignments: number; hours: number; shiftSlotsChecked: number };
 } {
   const { year, month, shiftTypes, assignments, members } = input;
+  const hol = input.holidayOverrides ?? [];
   const stById = new Map(shiftTypes.map((s) => [s.id, s]));
 
   const hoursByMember = new Map<string, number>();
@@ -84,20 +102,33 @@ export function buildScheduleReport(input: {
     sunsByMember.set(m.id, 0);
   }
 
+  const extraCount = new Map<string, number>();
+  const extraHours = new Map<string, number>();
+  const extraMeta = new Map<string, { label: string; color: string | null }>();
+
   let totalHours = 0;
   for (const a of assignments) {
     const st = stById.get(a.shiftTypeId);
     if (!st) continue;
     const h = st.durationHours;
     totalHours += h;
-    countByMember.set(a.memberId, (countByMember.get(a.memberId) ?? 0) + 1);
-    hoursByMember.set(a.memberId, (hoursByMember.get(a.memberId) ?? 0) + h);
-    if (st.isNight) {
-      nightsByMember.set(a.memberId, (nightsByMember.get(a.memberId) ?? 0) + 1);
+    const mid = a.memberId;
+    const gl = (a.guestLabel ?? "").trim();
+    if (mid) {
+      countByMember.set(mid, (countByMember.get(mid) ?? 0) + 1);
+      hoursByMember.set(mid, (hoursByMember.get(mid) ?? 0) + h);
+      if (st.isNight) {
+        nightsByMember.set(mid, (nightsByMember.get(mid) ?? 0) + 1);
+      }
+      const dow = utcDow(a.date);
+      if (dow === 6) satsByMember.set(mid, (satsByMember.get(mid) ?? 0) + 1);
+      if (dow === 0) sunsByMember.set(mid, (sunsByMember.get(mid) ?? 0) + 1);
+    } else if (gl) {
+      const ck = `g:${gl}|${a.guestColor ?? ""}`;
+      extraCount.set(ck, (extraCount.get(ck) ?? 0) + 1);
+      extraHours.set(ck, (extraHours.get(ck) ?? 0) + h);
+      extraMeta.set(ck, { label: gl, color: a.guestColor ?? null });
     }
-    const dow = utcDow(a.date);
-    if (dow === 6) satsByMember.set(a.memberId, (satsByMember.get(a.memberId) ?? 0) + 1);
-    if (dow === 0) sunsByMember.set(a.memberId, (sunsByMember.get(a.memberId) ?? 0) + 1);
   }
 
   const memberRows: MemberReportRow[] = members.map((m) => ({
@@ -113,14 +144,25 @@ export function buildScheduleReport(input: {
     contractMode: m.contractMode,
   }));
 
+  const extraRows: ExtraReportRow[] = [...extraMeta.entries()]
+    .map(([key, meta]) => ({
+      key,
+      label: meta.label,
+      color: meta.color,
+      shiftCount: extraCount.get(key) ?? 0,
+      hoursTotal: Math.round((extraHours.get(key) ?? 0) * 100) / 100,
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label, "it"));
+
   const coverageAlerts: CoverageAlert[] = [];
   const dim = daysInMonth(year, month);
   let shiftSlotsChecked = 0;
 
   for (let day = 1; day <= dim; day++) {
     const date = `${year}-${pad2(month)}-${pad2(day)}`;
+    const dow = utcDow(date);
     for (const st of shiftTypes) {
-      if (!st.activeWeekdays.includes(utcDow(date))) continue;
+      if (!isShiftActiveOnDate(hol, date, dow, st.id, st.activeWeekdays)) continue;
       shiftSlotsChecked += 1;
       const count = assignments.filter((x) => x.date === date && x.shiftTypeId === st.id).length;
       if (count < st.minStaff) {
@@ -150,6 +192,7 @@ export function buildScheduleReport(input: {
 
   return {
     memberRows: memberRows.sort((a, b) => a.label.localeCompare(b.label, "it")),
+    extraRows,
     coverageAlerts,
     totals: {
       assignments: assignments.length,

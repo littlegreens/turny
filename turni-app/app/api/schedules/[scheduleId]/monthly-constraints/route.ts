@@ -13,8 +13,8 @@ const createMonthlyConstraintSchema = z.object({
   note: z.string().trim().max(200).optional().or(z.literal("")),
 });
 
-/** Nessun campo `note` lato griglia: evita fallimenti Zod su union/optional. */
-const monthlyConstraintItemSchema = z.discriminatedUnion("type", [
+/** Union (non discriminated su `type`: due varianti CUSTOM con stesso type). */
+const monthlyConstraintItemSchema = z.union([
   z.object({
     type: z.literal("UNAVAILABLE_DATE"),
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data non valida (usa YYYY-MM-DD)"),
@@ -32,6 +32,19 @@ const monthlyConstraintItemSchema = z.discriminatedUnion("type", [
     type: z.literal("REQUIRED_SHIFT"),
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data non valida (usa YYYY-MM-DD)"),
     shiftTypeId: z.string().min(1, "Manca il tipo turno per obbligo assegnazione"),
+  }),
+  /** Disponibilità straordinaria sul periodo: annulla per quella data il vincolo generale «non disponibile quel giorno». */
+  z.object({
+    type: z.literal("CUSTOM"),
+    note: z.literal("GENERIC_DAY_UNLOCK"),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data non valida (usa YYYY-MM-DD)"),
+  }),
+  /** Disponibilità straordinaria: annulla per quel giorno+fascia il vincolo generale «evita questa fascia». */
+  z.object({
+    type: z.literal("CUSTOM"),
+    note: z.literal("GENERIC_SHIFT_UNLOCK"),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data non valida (usa YYYY-MM-DD)"),
+    shiftTypeId: z.string().min(1, "Manca il tipo turno"),
   }),
 ]);
 
@@ -148,6 +161,9 @@ export async function PUT(request: Request, { params }: Params) {
     if (item.type === "REQUIRED_SHIFT" && !item.shiftTypeId) {
       return NextResponse.json({ error: "Per REQUIRED_SHIFT serve shiftTypeId" }, { status: 400 });
     }
+    if (item.type === "CUSTOM" && item.note === "GENERIC_SHIFT_UNLOCK" && !item.shiftTypeId) {
+      return NextResponse.json({ error: "Per GENERIC_SHIFT_UNLOCK serve shiftTypeId" }, { status: 400 });
+    }
   }
 
   const shiftTypes = await prisma.shiftType.findMany({
@@ -208,17 +224,32 @@ export async function PUT(request: Request, { params }: Params) {
       where: { scheduleId, memberId: parsed.data.memberId },
     }),
     prisma.monthlyConstraint.createMany({
-      data: parsed.data.items.map((item) => ({
-        scheduleId,
-        memberId: parsed.data.memberId,
-        type: item.type,
-        weight: "HARD",
-        value:
-          item.type === "UNAVAILABLE_DATE" || item.type === "REQUIRED_DATE"
-            ? { date: item.date }
-            : { date: item.date, shiftTypeId: item.shiftTypeId },
-        note: null,
-      })) as unknown as Prisma.MonthlyConstraintCreateManyInput[],
+      data: parsed.data.items.map((item) => {
+        if (item.type === "CUSTOM") {
+          return {
+            scheduleId,
+            memberId: parsed.data.memberId,
+            type: "CUSTOM" as const,
+            weight: "HARD" as const,
+            value:
+              item.note === "GENERIC_DAY_UNLOCK"
+                ? { date: item.date }
+                : { date: item.date, shiftTypeId: item.shiftTypeId },
+            note: item.note,
+          };
+        }
+        return {
+          scheduleId,
+          memberId: parsed.data.memberId,
+          type: item.type,
+          weight: "HARD" as const,
+          value:
+            item.type === "UNAVAILABLE_DATE" || item.type === "REQUIRED_DATE"
+              ? { date: item.date }
+              : { date: item.date, shiftTypeId: item.shiftTypeId },
+          note: null,
+        };
+      }) as unknown as Prisma.MonthlyConstraintCreateManyInput[],
     }),
   ]);
 

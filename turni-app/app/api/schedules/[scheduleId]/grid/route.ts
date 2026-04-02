@@ -71,15 +71,23 @@ export async function GET(_: Request, { params }: Params) {
       id: m.id,
       label: `${`${m.user.firstName} ${m.user.lastName}`.trim() || m.user.email}`,
     })),
-    assignments: assignments.map((a) => ({
-      id: a.id,
-      memberId: a.memberId,
-      shiftTypeId: a.shiftTypeId,
-      date: a.date.toISOString().slice(0, 10),
-      memberLabel: `${`${a.member.user.firstName} ${a.member.user.lastName}`.trim() || a.member.user.email}`,
-      shiftTypeName: a.shiftType.name,
-      shiftTypeColor: a.shiftType.color,
-    })),
+    assignments: assignments.map((a) => {
+      const guest = !a.memberId;
+      const memberLabel = a.member
+        ? `${`${a.member.user.firstName} ${a.member.user.lastName}`.trim() || a.member.user.email}`
+        : (a.guestLabel?.trim() || "Extra");
+      return {
+        id: a.id,
+        memberId: a.memberId ?? "",
+        isGuest: guest,
+        ...(guest ? { guestColor: a.guestColor ?? undefined, guestLabel: a.guestLabel ?? undefined } : {}),
+        shiftTypeId: a.shiftTypeId,
+        date: a.date.toISOString().slice(0, 10),
+        memberLabel,
+        shiftTypeName: a.shiftType.name,
+        shiftTypeColor: a.shiftType.color,
+      };
+    }),
     monthlyUnavailable: monthlyConstraints.map((c) => ({
       memberId: c.memberId,
       date: (c.value as { date?: string })?.date ?? "",

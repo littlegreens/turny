@@ -6,8 +6,9 @@ import { CalendarMembersPanel } from "@/components/calendar-members-panel";
 import { CalendarShiftTypesPanel } from "@/components/calendar-shift-types-panel";
 import { CalendarCoRulesPanelV2 } from "@/components/calendar-co-rules-panel-v2";
 import { authOptions } from "@/lib/auth";
+import { parseProfessionalRoles } from "@/lib/professional-roles";
 import { resolveMemberRowColor } from "@/lib/member-row-color";
-import { hasAnyRole, normalizeRoles } from "@/lib/org-roles";
+import { hasAnyRole, normalizeRoles, type OrgRoleValue } from "@/lib/org-roles";
 import { fetchOrgMemberDisplayColors } from "@/lib/org-member-display-colors";
 import { prisma } from "@/lib/prisma";
 import { isSuperAdminEmail } from "@/lib/super-admin";
@@ -43,7 +44,9 @@ export default async function CalendarDetailPage({ params }: Props) {
   if (!membership && !superAdmin) {
     notFound();
   }
-  const effectiveRoles = membership ? normalizeRoles([membership.role, ...membership.roles]) : ["OWNER", "ADMIN"];
+  const effectiveRoles: OrgRoleValue[] = membership
+    ? normalizeRoles([membership.role, ...membership.roles])
+    : (["OWNER", "ADMIN"] satisfies OrgRoleValue[]);
   if (!hasAnyRole(effectiveRoles, ["OWNER", "ADMIN", "MANAGER"])) {
     redirect(`/${orgSlug}/turni`);
   }
@@ -88,6 +91,15 @@ export default async function CalendarDetailPage({ params }: Props) {
       email: m.user.email,
     }));
 
+  const roleOptions = [
+    ...new Set(
+      calendarMembers
+        .flatMap((m) => parseProfessionalRoles(m.user.professionalRole || ""))
+        .map((r) => r.trim())
+        .filter(Boolean),
+    ),
+  ].sort((a, b) => a.localeCompare(b, "it"));
+
   return (
     <>
       <AppBreadcrumbs
@@ -105,7 +117,7 @@ export default async function CalendarDetailPage({ params }: Props) {
       <section className="card mt-3">
         <div className="card-body">
           <h3 className="mb-2">Fasce orarie</h3>
-          <CalendarShiftTypesPanel calendarId={calendar.id} canEdit={canEdit} shiftTypes={shiftTypes} />
+          <CalendarShiftTypesPanel calendarId={calendar.id} canEdit={canEdit} shiftTypes={shiftTypes} roleOptions={roleOptions} />
         </div>
       </section>
 
@@ -148,6 +160,7 @@ export default async function CalendarDetailPage({ params }: Props) {
             calId={calendar.id}
             canEdit={canEdit}
             initialCalendarRules={calendar.rules}
+            shiftTypes={shiftTypes.map((st) => ({ id: st.id, name: st.name }))}
             members={calendarMembers.map((m) => ({
               id: m.id,
               label: `${`${m.user.firstName} ${m.user.lastName}`.trim() || m.user.email}`,

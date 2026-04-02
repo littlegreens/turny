@@ -361,6 +361,8 @@ export function OrgMemberItem({
               onChange={setProfessionalRole}
               suggestions={professionalRoleSuggestions}
               disabled={!canEditRole || loading}
+              orgSlug={orgSlugFromPath}
+              canManageGlobalRoles={canEditRole}
             />
           </div>
           <div className="col-12 border-top pt-3 mt-1">

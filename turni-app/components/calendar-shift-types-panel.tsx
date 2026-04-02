@@ -1,7 +1,8 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ShiftTypeCreateForm } from "@/components/shift-type-create-form";
 import { ShiftTypeItem } from "@/components/shift-type-item";
+import { useAppToast } from "@/components/app-toast-provider";
 
 type ShiftTypeRow = {
   id: string;
@@ -12,16 +13,58 @@ type ShiftTypeRow = {
   minStaff: number;
   color: string;
   activeWeekdays: number[];
+  rules?: unknown;
 };
 
 type Props = {
   calendarId: string;
   canEdit: boolean;
   shiftTypes: ShiftTypeRow[];
+  roleOptions?: string[];
 };
 
-export function CalendarShiftTypesPanel({ calendarId, canEdit, shiftTypes }: Props) {
+export function CalendarShiftTypesPanel({ calendarId, canEdit, shiftTypes, roleOptions = [] }: Props) {
+  const { showToast } = useAppToast();
   const [openCreate, setOpenCreate] = useState(false);
+  const [items, setItems] = useState(shiftTypes);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [savingOrder, setSavingOrder] = useState(false);
+  const draggingIndex = useMemo(() => items.findIndex((x) => x.id === draggingId), [items, draggingId]);
+
+  useEffect(() => {
+    setItems(shiftTypes);
+  }, [shiftTypes]);
+
+  function moveItem(list: ShiftTypeRow[], fromIdx: number, toIdx: number) {
+    if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return list;
+    const next = [...list];
+    const [moved] = next.splice(fromIdx, 1);
+    next.splice(toIdx, 0, moved);
+    return next;
+  }
+
+  async function persistOrder(nextItems: ShiftTypeRow[]) {
+    try {
+      setSavingOrder(true);
+      const res = await fetch(`/api/calendars/${calendarId}/shift-types/reorder`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shiftTypeIds: nextItems.map((x) => x.id) }),
+      });
+      const payload = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        showToast("error", payload.error ?? "Ordinamento non salvato");
+        setItems(shiftTypes);
+        return;
+      }
+      showToast("success", "Ordine fasce orarie salvato.");
+    } catch {
+      showToast("error", "Errore di rete durante il salvataggio ordine");
+      setItems(shiftTypes);
+    } finally {
+      setSavingOrder(false);
+    }
+  }
 
   return (
     <>
@@ -32,14 +75,37 @@ export function CalendarShiftTypesPanel({ calendarId, canEdit, shiftTypes }: Pro
         </div>
       ) : (
         <ul className="list-unstyled mt-3 d-grid gap-2">
-          {shiftTypes.map((shiftType) => (
-            <ShiftTypeItem key={shiftType.id} shiftType={shiftType} canEdit={canEdit} />
+          {items.map((shiftType, idx) => (
+            <ShiftTypeItem
+              key={shiftType.id}
+              shiftType={shiftType}
+              canEdit={canEdit}
+              canReorder={canEdit}
+              roleOptions={roleOptions}
+              isDragging={draggingId === shiftType.id}
+              onDragStart={() => setDraggingId(shiftType.id)}
+              onDragOver={(event) => {
+                if (!canEdit || draggingId === null || draggingIndex === -1) return;
+                event.preventDefault();
+                if (draggingIndex === idx) return;
+                setItems((prev) => {
+                  const from = prev.findIndex((x) => x.id === draggingId);
+                  return moveItem(prev, from, idx);
+                });
+              }}
+              onDrop={async () => {
+                if (!canEdit) return;
+                setDraggingId(null);
+                await persistOrder(items);
+              }}
+              onDragEnd={() => setDraggingId(null)}
+            />
           ))}
         </ul>
       )}
       {canEdit ? (
         <div className="mt-3 d-flex justify-content-end">
-          <button className="btn btn-success" onClick={() => setOpenCreate(true)}>
+          <button className="btn btn-success" onClick={() => setOpenCreate(true)} disabled={savingOrder}>
             Aggiungi fascia oraria
           </button>
         </div>
@@ -54,7 +120,7 @@ export function CalendarShiftTypesPanel({ calendarId, canEdit, shiftTypes }: Pro
                   <button type="button" className="btn-close" aria-label="Chiudi" onClick={() => setOpenCreate(false)} />
                 </div>
                 <div className="modal-body pb-4">
-                  <ShiftTypeCreateForm calId={calendarId} canCreate={canEdit} onCreated={() => setOpenCreate(false)} />
+                  <ShiftTypeCreateForm calId={calendarId} canCreate={canEdit} roleOptions={roleOptions} onCreated={() => setOpenCreate(false)} />
                 </div>
               </div>
             </div>

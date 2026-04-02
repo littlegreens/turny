@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { type DragEvent, useState } from "react";
 import { ConfirmModal } from "@/components/confirm-modal";
 import { ColorPalettePicker } from "@/components/color-palette-picker";
 import { formatWeekdays } from "@/lib/weekdays";
@@ -18,15 +18,33 @@ type Props = {
     minStaff: number;
     color: string;
     activeWeekdays: number[];
+    rules?: unknown;
   };
   canEdit: boolean;
+  roleOptions?: string[];
+  canReorder?: boolean;
+  isDragging?: boolean;
+  onDragStart?: () => void;
+  onDragOver?: (event: DragEvent<HTMLLIElement>) => void;
+  onDrop?: () => void;
+  onDragEnd?: () => void;
 };
 
 function colorWithAlpha(hex: string, alphaHex = "1f") {
   return /^#[0-9A-Fa-f]{6}$/.test(hex) ? `${hex}${alphaHex}` : "#1f7a3f1f";
 }
 
-export function ShiftTypeItem({ shiftType, canEdit }: Props) {
+export function ShiftTypeItem({
+  shiftType,
+  canEdit,
+  roleOptions = [],
+  canReorder = false,
+  isDragging = false,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  onDragEnd,
+}: Props) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(shiftType.name);
@@ -35,6 +53,11 @@ export function ShiftTypeItem({ shiftType, canEdit }: Props) {
   const [minStaff, setMinStaff] = useState(shiftType.minStaff);
   const [color, setColor] = useState(shiftType.color);
   const [activeWeekdays, setActiveWeekdays] = useState<number[]>(shiftType.activeWeekdays ?? [1, 2, 3, 4, 5]);
+  const [roleSlots, setRoleSlots] = useState<Array<string | null>>(() => {
+    const r = shiftType.rules as { roleSlots?: Array<string | null> } | null | undefined;
+    const slots = Array.isArray(r?.roleSlots) ? r!.roleSlots : [];
+    return Array.from({ length: Math.max(1, shiftType.minStaff) }, (_, i) => slots[i] ?? null);
+  });
   const [saving, setSaving] = useState(false);
   const [weekdaysOpen, setWeekdaysOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -59,7 +82,18 @@ export function ShiftTypeItem({ shiftType, canEdit }: Props) {
     await fetch(`/api/shift-types/${shiftType.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, startTime, endTime, minStaff, color, activeWeekdays }),
+      body: JSON.stringify({
+        name,
+        startTime,
+        endTime,
+        minStaff,
+        color,
+        activeWeekdays,
+        rules: {
+          ...(typeof shiftType.rules === "object" && shiftType.rules ? (shiftType.rules as Record<string, unknown>) : {}),
+          roleSlots: Array.from({ length: Math.max(1, minStaff) }, (_, i) => roleSlots[i] ?? null),
+        },
+      }),
     });
     setSaving(false);
     setEditing(false);
@@ -75,9 +109,23 @@ export function ShiftTypeItem({ shiftType, canEdit }: Props) {
   }
 
   return (
-    <li className="rounded p-3" style={{ border: `1px solid ${shiftType.color}`, backgroundColor: colorWithAlpha(shiftType.color) }}>
+    <li
+      className="rounded p-3"
+      style={{ border: `1px solid ${shiftType.color}`, backgroundColor: colorWithAlpha(shiftType.color), opacity: isDragging ? 0.65 : 1 }}
+      draggable={canReorder}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      onDragEnd={onDragEnd}
+    >
       <div className="d-flex justify-content-between align-items-center">
-        <div>
+        <div className="d-flex align-items-center gap-2">
+          {canReorder ? (
+            <span className="text-secondary" style={{ cursor: "grab", userSelect: "none", fontSize: 18, lineHeight: 1 }} aria-hidden="true" title="Trascina per ordinare">
+              ⋮⋮
+            </span>
+          ) : null}
+          <div>
           <p className="fw-semibold mb-0">{shiftType.name}</p>
           <p className="small text-secondary mb-0">
             {shiftType.startTime} - {shiftType.endTime} ({shiftType.durationHours}h)
@@ -85,6 +133,7 @@ export function ShiftTypeItem({ shiftType, canEdit }: Props) {
           <p className="small text-secondary mb-0">
             {formatWeekdays(shiftType.activeWeekdays ?? [1, 2, 3, 4, 5])}
           </p>
+          </div>
         </div>
         <div className="d-flex align-items-center gap-2">
           <span className="small text-secondary">min staff: {shiftType.minStaff}</span>
@@ -125,10 +174,51 @@ export function ShiftTypeItem({ shiftType, canEdit }: Props) {
                     </div>
                     <div className="col-6 col-md-3">
                       <label className="form-label small mb-1">Min staff</label>
-                      <input type="number" min={1} className="form-control form-control-sm input-underlined input-underlined-compact" value={minStaff} onChange={(e) => setMinStaff(Number(e.target.value))} />
+                      <input
+                        type="number"
+                        min={1}
+                        className="form-control form-control-sm input-underlined input-underlined-compact"
+                        value={minStaff}
+                        onChange={(e) => {
+                          const v = Math.max(1, Math.floor(Number(e.target.value) || 1));
+                          setMinStaff(v);
+                          setRoleSlots((prev) => Array.from({ length: v }, (_, i) => prev[i] ?? null));
+                        }}
+                      />
                     </div>
                     <div className="col-6 col-md-3">
                       <ColorPalettePicker value={color} onChange={setColor} label="Colore" />
+                    </div>
+                    <div className="col-12">
+                      <label className="form-label small mb-1">Ruoli per slot</label>
+                      <div className="d-grid gap-2">
+                        {Array.from({ length: Math.max(1, minStaff) }, (_, i) => (
+                          <div key={i} className="d-flex align-items-center gap-2">
+                            <span className="small text-secondary" style={{ minWidth: 64 }}>
+                              Slot {i + 1}
+                            </span>
+                            <select
+                              className="form-select form-select-sm input-underlined input-underlined-compact"
+                              value={roleSlots[i] ?? ""}
+                              onChange={(e) => {
+                                const next = e.target.value ? e.target.value : null;
+                                setRoleSlots((prev) => {
+                                  const out = Array.from({ length: Math.max(1, minStaff) }, (_, j) => prev[j] ?? null);
+                                  out[i] = next;
+                                  return out;
+                                });
+                              }}
+                            >
+                              <option value="">Indifferente</option>
+                              {roleOptions.map((r) => (
+                                <option key={r} value={r}>
+                                  {r}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                     <div className="col-12 col-md-6 position-relative">
                       <label className="form-label small mb-1 d-block">Giorni attivi</label>

@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ConfirmModal } from "@/components/confirm-modal";
 import { useAppToast } from "@/components/app-toast-provider";
+import { parseProfessionalRoles } from "@/lib/professional-roles";
 
 const DOW_LABELS = ["Domenica", "Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato"];
 
@@ -12,20 +13,35 @@ type RuleDraft = {
   id: string;
   name: string;
   kind: "ALWAYS_WITH" | "NEVER_WITH";
+  /** SOFT (default): penalità + alert. HARD: vincolo diretto, mai violabile. */
+  weight: "SOFT" | "HARD";
   ifSelectors: string[];
   thenSelectors: string[];
+  whenDow?: number | null;
+  whenShiftTypeId?: string | null;
+  excludeDow?: number | null;
+  excludeShiftTypeId?: string | null;
 };
 type DowRuleDraft = {
   id: string;
   name: string;
   kind: "DAY_IMPLIES_DAY" | "DAY_EXCLUDES_DAY";
+  weight: "HARD" | "SOFT";
   fromDow: number;
   toDow: number;
+  fromShiftTypeId?: string | null;
+  toShiftTypeId?: string | null;
 };
 
-type Props = { calId: string; canEdit: boolean; initialCalendarRules: unknown; members: MemberOpt[] };
+type Props = {
+  calId: string;
+  canEdit: boolean;
+  initialCalendarRules: unknown;
+  members: MemberOpt[];
+  shiftTypes: { id: string; name: string }[];
+};
 
-export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, members }: Props) {
+export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, members, shiftTypes }: Props) {
   const router = useRouter();
   const { showToast } = useAppToast();
   const [loading, setLoading] = useState(false);
@@ -33,10 +49,15 @@ export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, m
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [kind, setKind] = useState<"ALWAYS_WITH" | "NEVER_WITH">("ALWAYS_WITH");
+  const [coWeight, setCoWeight] = useState<"SOFT" | "HARD">("SOFT");
   const [ifSelectors, setIfSelectors] = useState<string[]>([]);
   const [thenSelectors, setThenSelectors] = useState<string[]>([]);
   const [ifQuery, setIfQuery] = useState("");
   const [thenQuery, setThenQuery] = useState("");
+  const [whenDow, setWhenDow] = useState<number | "">("");
+  const [whenShiftTypeId, setWhenShiftTypeId] = useState("");
+  const [excludeDow, setExcludeDow] = useState<number | "">("");
+  const [excludeShiftTypeId, setExcludeShiftTypeId] = useState("");
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [rules, setRules] = useState<RuleDraft[]>(() => {
     const raw = (initialCalendarRules ?? {}) as { coPresenceRules?: unknown };
@@ -47,8 +68,14 @@ export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, m
         id: String(r.id || crypto.randomUUID()),
         name: String(r.name || "Regola"),
         kind: r.kind === "NEVER_WITH" ? "NEVER_WITH" : ("ALWAYS_WITH" as const),
+        // Default SOFT: retrocompatibilità — le regole vecchie erano sempre soft (con slack).
+        weight: r.weight === "HARD" ? "HARD" : ("SOFT" as const),
         ifSelectors: Array.isArray(r.ifSelectors) ? r.ifSelectors.map(String).filter(Boolean) : [],
         thenSelectors: Array.isArray(r.thenSelectors) ? r.thenSelectors.map(String).filter(Boolean) : [],
+        whenDow: r.whenDow == null ? null : Number(r.whenDow),
+        whenShiftTypeId: r.whenShiftTypeId == null ? null : String(r.whenShiftTypeId),
+        excludeDow: r.excludeDow == null ? null : Number(r.excludeDow),
+        excludeShiftTypeId: r.excludeShiftTypeId == null ? null : String(r.excludeShiftTypeId),
       }))
       .filter((r) => r.ifSelectors.length && r.thenSelectors.length);
   });
@@ -63,8 +90,12 @@ export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, m
         id: String(r.id || crypto.randomUUID()),
         name: String(r.name || "Regola giorno"),
         kind: r.kind === "DAY_EXCLUDES_DAY" ? "DAY_EXCLUDES_DAY" : ("DAY_IMPLIES_DAY" as const),
+        // Default SOFT: retrocompatibilità — le regole vecchie erano sempre soft (con slack).
+        weight: r.weight === "HARD" ? "HARD" : ("SOFT" as const),
         fromDow: Number(r.fromDow ?? 6),
         toDow: Number(r.toDow ?? 0),
+        fromShiftTypeId: r.fromShiftTypeId == null ? null : String(r.fromShiftTypeId),
+        toShiftTypeId: r.toShiftTypeId == null ? null : String(r.toShiftTypeId),
       }));
   });
   const [restDaysAfterNight, setRestDaysAfterNight] = useState<number>(() => {
@@ -77,13 +108,20 @@ export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, m
   const [dowEditingId, setDowEditingId] = useState<string | null>(null);
   const [dowName, setDowName] = useState("");
   const [dowKind, setDowKind] = useState<"DAY_IMPLIES_DAY" | "DAY_EXCLUDES_DAY">("DAY_IMPLIES_DAY");
+  const [dowWeight, setDowWeight] = useState<"HARD" | "SOFT">("SOFT");
   const [dowFromDow, setDowFromDow] = useState(6);
   const [dowToDow, setDowToDow] = useState(0);
+  const [dowFromShiftTypeId, setDowFromShiftTypeId] = useState("");
+  const [dowToShiftTypeId, setDowToShiftTypeId] = useState("");
   const [deleteDowTargetId, setDeleteDowTargetId] = useState<string | null>(null);
 
   const roleOptions = useMemo(() => {
     const set = new Set<string>();
-    for (const m of members) if (m.professionalRole?.trim()) set.add(m.professionalRole.trim());
+    for (const m of members) {
+      for (const role of parseProfessionalRoles(m.professionalRole ?? "")) {
+        set.add(role);
+      }
+    }
     return [...set].sort((a, b) => a.localeCompare(b));
   }, [members]);
 
@@ -109,7 +147,11 @@ export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, m
     const ifLabels = r.ifSelectors.map(selectorLabel).join(", ");
     const thenLabels = r.thenSelectors.map(selectorLabel).join(", ");
     const verb = r.kind === "ALWAYS_WITH" ? "deve stare con" : "non deve stare con";
-    return `${ifLabels} ${verb} ${thenLabels}`;
+    const whenDay = r.whenDow == null ? "qualsiasi giorno" : DOW_LABELS[r.whenDow];
+    const whenShift = r.whenShiftTypeId ? (shiftTypes.find((s) => s.id === r.whenShiftTypeId)?.name ?? r.whenShiftTypeId) : "qualsiasi turno";
+    const exDay = r.excludeDow == null ? null : DOW_LABELS[r.excludeDow];
+    const exShift = r.excludeShiftTypeId ? (shiftTypes.find((s) => s.id === r.excludeShiftTypeId)?.name ?? r.excludeShiftTypeId) : null;
+    return `${ifLabels} ${verb} ${thenLabels} · ${whenDay} / ${whenShift}${exDay || exShift ? ` · Escludi ${exDay ?? "qualsiasi giorno"} / ${exShift ?? "qualsiasi turno"}` : ""}`;
   }
 
   function openModal(ruleId: string | null) {
@@ -117,8 +159,13 @@ export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, m
       setEditingId(null);
       setName("");
       setKind("ALWAYS_WITH");
+      setCoWeight("SOFT");
       setIfSelectors([]);
       setThenSelectors([]);
+      setWhenDow("");
+      setWhenShiftTypeId("");
+      setExcludeDow("");
+      setExcludeShiftTypeId("");
       setIfQuery("");
       setThenQuery("");
       setModalOpen(true);
@@ -129,8 +176,13 @@ export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, m
     setEditingId(r.id);
     setName(r.name);
     setKind(r.kind);
+    setCoWeight(r.weight);
     setIfSelectors(r.ifSelectors);
     setThenSelectors(r.thenSelectors);
+    setWhenDow(r.whenDow ?? "");
+    setWhenShiftTypeId(r.whenShiftTypeId ?? "");
+    setExcludeDow(r.excludeDow ?? "");
+    setExcludeShiftTypeId(r.excludeShiftTypeId ?? "");
     setIfQuery("");
     setThenQuery("");
     setModalOpen(true);
@@ -148,15 +200,23 @@ export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, m
           id: r.id,
           name: r.name.trim(),
           kind: r.kind,
+          weight: r.weight,
           ifSelectors: [...new Set(r.ifSelectors)].filter(Boolean),
           thenSelectors: [...new Set(r.thenSelectors)].filter(Boolean),
+          whenDow: r.whenDow ?? null,
+          whenShiftTypeId: r.whenShiftTypeId ?? null,
+          excludeDow: r.excludeDow ?? null,
+          excludeShiftTypeId: r.excludeShiftTypeId ?? null,
         })),
         dowRules: dows.map((r) => ({
           id: r.id,
           name: r.name.trim(),
           kind: r.kind,
+          weight: r.weight,
           fromDow: r.fromDow,
           toDow: r.toDow,
+          fromShiftTypeId: r.fromShiftTypeId ?? null,
+          toShiftTypeId: r.toShiftTypeId ?? null,
         })),
         rest_days_after_night: rdays,
       };
@@ -272,9 +332,14 @@ export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, m
         ) : (
           <div className="d-grid gap-2 mt-3">
             {rules.map((r) => (
-              <div key={r.id} className="border rounded-3 p-3 d-flex justify-content-between align-items-start gap-2 flex-wrap">
+              <div key={r.id} className="border rounded p-3 d-flex justify-content-between align-items-start gap-2 flex-wrap">
                 <div style={{ flex: 1, minWidth: 200 }}>
-                  <div className="fw-semibold">{r.name}</div>
+                  <div className="fw-semibold d-flex align-items-center gap-2">
+                    {r.name}
+                    <span className={`badge ${r.weight === "HARD" ? "text-bg-secondary" : "text-bg-warning"}`}>
+                      {r.weight === "HARD" ? "Obbligatoria" : "Preferita"}
+                    </span>
+                  </div>
                   <div className="small text-secondary mt-1">{ruleDescription(r)}</div>
                 </div>
                 <div className="d-flex gap-2 flex-shrink-0">
@@ -304,7 +369,7 @@ export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, m
       {modalOpen ? (
         <>
           <div className="modal fade show d-block" tabIndex={-1} role="dialog" aria-modal="true">
-            <div className="modal-dialog modal-dialog-centered modal-xl">
+            <div className="modal-dialog modal-dialog-centered modal-xl turny-modal-wide">
               <div className="modal-content turny-modal">
                 <div className="modal-header">
                   <h5 className="modal-title">{editingId ? "Modifica regola" : "Nuova regola"}</h5>
@@ -312,7 +377,6 @@ export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, m
                 </div>
                 <div className="modal-body pb-4">
                   <div className="row g-3">
-                    {/* Nome */}
                     <div className="col-12">
                       <label className="form-label small mb-1">Nome</label>
                       <input
@@ -323,7 +387,39 @@ export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, m
                       />
                     </div>
 
-                    {/* Riga: Se — Relazione — Con */}
+                    <div className="col-12">
+                      <label className="form-label small mb-1">Peso</label>
+                      <select
+                        className="form-select"
+                        value={coWeight}
+                        onChange={(e) => setCoWeight(e.target.value === "HARD" ? "HARD" : "SOFT")}
+                      >
+                        <option value="SOFT">Preferita — il motore la segue se può, altrimenti la salta (consigliato)</option>
+                        <option value="HARD">Obbligatoria — il motore la rispetta sempre (attenzione: può rendere il piano impossibile)</option>
+                      </select>
+                    </div>
+
+                    <div className="col-12">
+                      <p className="small fw-semibold mb-1">Ambito regola</p>
+                    </div>
+                    <div className="col-12 col-lg-4">
+                      <label className="form-label small mb-1">Giorno</label>
+                      <select className="form-select" value={whenDow === "" ? "" : String(whenDow)} onChange={(e) => setWhenDow(e.target.value === "" ? "" : Number(e.target.value))}>
+                        <option value="">Non definito</option>
+                        {DOW_LABELS.map((d, i) => <option key={`wd-${i}`} value={i}>{d}</option>)}
+                      </select>
+                    </div>
+                    <div className="col-12 col-lg-4">
+                      <label className="form-label small mb-1">Turno</label>
+                      <select className="form-select" value={whenShiftTypeId} onChange={(e) => setWhenShiftTypeId(e.target.value)}>
+                        <option value="">Non definito</option>
+                        {shiftTypes.map((st) => <option key={st.id} value={st.id}>{st.name}</option>)}
+                      </select>
+                    </div>
+
+                    <div className="col-12">
+                      <p className="small fw-semibold mb-1">Relazione</p>
+                    </div>
                     <div className="col-12 col-lg-5">
                       <label className="form-label small mb-1">Persona/ruolo</label>
                       <SelectorInput
@@ -355,6 +451,24 @@ export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, m
                         setSelected={setThenSelectors}
                       />
                     </div>
+
+                    <div className="col-12">
+                      <p className="small fw-semibold mb-1">Escludi</p>
+                    </div>
+                    <div className="col-12 col-lg-4">
+                      <label className="form-label small mb-1">Giorno</label>
+                      <select className="form-select" value={excludeDow === "" ? "" : String(excludeDow)} onChange={(e) => setExcludeDow(e.target.value === "" ? "" : Number(e.target.value))}>
+                        <option value="">Non definito</option>
+                        {DOW_LABELS.map((d, i) => <option key={`exd-${i}`} value={i}>{d}</option>)}
+                      </select>
+                    </div>
+                    <div className="col-12 col-lg-4">
+                      <label className="form-label small mb-1">Turno</label>
+                      <select className="form-select" value={excludeShiftTypeId} onChange={(e) => setExcludeShiftTypeId(e.target.value)}>
+                        <option value="">Non definito</option>
+                        {shiftTypes.map((st) => <option key={`exs-${st.id}`} value={st.id}>{st.name}</option>)}
+                      </select>
+                    </div>
                   </div>
                 </div>
 
@@ -368,7 +482,18 @@ export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, m
                     disabled={loading || !canEdit || name.trim().length < 2 || ifSelectors.length === 0 || thenSelectors.length === 0}
                     onClick={() => {
                       const id = editingId ?? crypto.randomUUID();
-                      const next: RuleDraft = { id, name: name.trim(), kind, ifSelectors, thenSelectors };
+                      const next: RuleDraft = {
+                        id,
+                        name: name.trim(),
+                        kind,
+                        weight: coWeight,
+                        ifSelectors,
+                        thenSelectors,
+                        whenDow: whenDow === "" ? null : whenDow,
+                        whenShiftTypeId: whenShiftTypeId || null,
+                        excludeDow: excludeDow === "" ? null : excludeDow,
+                        excludeShiftTypeId: excludeShiftTypeId || null,
+                      };
                       const nextRules = editingId ? rules.map((r) => (r.id === id ? next : r)) : [...rules, next];
                       void (async () => {
                         const ok = await persist(nextRules);
@@ -433,7 +558,8 @@ export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, m
                 <div>
                   <div className="fw-semibold small">{r.name}</div>
                   <div className="small text-secondary">
-                    {DOW_LABELS[r.fromDow]} → {r.kind === "DAY_IMPLIES_DAY" ? "deve lavorare" : "non lavora"} → {DOW_LABELS[r.toDow]}
+                    {DOW_LABELS[r.fromDow]}{r.fromShiftTypeId ? ` / ${shiftTypes.find((s) => s.id === r.fromShiftTypeId)?.name ?? r.fromShiftTypeId}` : ""} → {r.kind === "DAY_IMPLIES_DAY" ? "deve lavorare" : "non lavora"} → {DOW_LABELS[r.toDow]}{r.toShiftTypeId ? ` / ${shiftTypes.find((s) => s.id === r.toShiftTypeId)?.name ?? r.toShiftTypeId}` : ""}
+                    {" "}<span className={`badge ${r.weight === "SOFT" ? "text-bg-warning" : "text-bg-secondary"}`}>{r.weight === "SOFT" ? "Preferita" : "Obbligatoria"}</span>
                   </div>
                 </div>
                 <div className="d-flex gap-2">
@@ -445,8 +571,11 @@ export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, m
                       setDowEditingId(r.id);
                       setDowName(r.name);
                       setDowKind(r.kind);
+                      setDowWeight(r.weight);
                       setDowFromDow(r.fromDow);
                       setDowToDow(r.toDow);
+                      setDowFromShiftTypeId(r.fromShiftTypeId ?? "");
+                      setDowToShiftTypeId(r.toShiftTypeId ?? "");
                       setDowModalOpen(true);
                     }}
                   >
@@ -474,8 +603,11 @@ export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, m
               setDowEditingId(null);
               setDowName("");
               setDowKind("DAY_IMPLIES_DAY");
+              setDowWeight("SOFT");
               setDowFromDow(6);
               setDowToDow(0);
+              setDowFromShiftTypeId("");
+              setDowToShiftTypeId("");
               setDowModalOpen(true);
             }}
           >
@@ -489,34 +621,63 @@ export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, m
     {dowModalOpen ? (
       <>
         <div className="modal fade show d-block" tabIndex={-1} role="dialog" aria-modal="true" style={{ zIndex: 1050 }}>
-          <div className="modal-dialog modal-dialog-centered">
+          <div className="modal-dialog modal-dialog-centered modal-xl turny-modal-wide">
             <div className="modal-content turny-modal">
               <div className="modal-header">
                 <h5 className="modal-title">{dowEditingId ? "Modifica regola giorno" : "Nuova regola giorno"}</h5>
                 <button type="button" className="btn-close" onClick={() => setDowModalOpen(false)} />
               </div>
-              <div className="modal-body">
+              <div className="modal-body pb-4">
                 <div className="mb-3">
                   <label className="form-label small mb-1">Nome</label>
                   <input className="form-control" value={dowName} onChange={(e) => setDowName(e.target.value)} placeholder="Es. Sabato implica domenica" />
                 </div>
-                <div className="row g-2 align-items-end">
-                  <div className="col">
+                <div className="mb-3">
+                  <label className="form-label small mb-1">Peso</label>
+                  <select className="form-select" value={dowWeight} onChange={(e) => setDowWeight(e.target.value === "SOFT" ? "SOFT" : "HARD")}>
+                    <option value="HARD">Obbligatoria — il motore la rispetta sempre</option>
+                    <option value="SOFT">Preferita — il motore la segue se può, altrimenti la salta</option>
+                  </select>
+                </div>
+                <div className="row g-3 align-items-end">
+                  <div className="col-12">
+                    <p className="small fw-semibold mb-1">Condizione (se)</p>
+                  </div>
+                  <div className="col-12 col-lg-4">
                     <label className="form-label small mb-1">Se lavora il</label>
                     <select className="form-select" value={dowFromDow} onChange={(e) => setDowFromDow(Number(e.target.value))}>
                       {DOW_LABELS.map((d, i) => <option key={i} value={i}>{d}</option>)}
                     </select>
                   </div>
-                  <div className="col-auto">
+                  <div className="col-12 col-lg-4">
+                    <label className="form-label small mb-1">Turno</label>
+                    <select className="form-select" value={dowFromShiftTypeId} onChange={(e) => setDowFromShiftTypeId(e.target.value)}>
+                      <option value="">Non definito</option>
+                      {shiftTypes.map((st) => <option key={`from-${st.id}`} value={st.id}>{st.name}</option>)}
+                    </select>
+                  </div>
+                  <div className="col-12 col-lg-4">
+                    <label className="form-label small mb-1">Relazione</label>
                     <select className="form-select" value={dowKind} onChange={(e) => setDowKind(e.target.value === "DAY_EXCLUDES_DAY" ? "DAY_EXCLUDES_DAY" : "DAY_IMPLIES_DAY")}>
                       <option value="DAY_IMPLIES_DAY">lavora anche</option>
                       <option value="DAY_EXCLUDES_DAY">non lavora</option>
                     </select>
                   </div>
-                  <div className="col">
+
+                  <div className="col-12">
+                    <p className="small fw-semibold mb-1 mt-1">Vincolo (allora)</p>
+                  </div>
+                  <div className="col-12 col-lg-4">
                     <label className="form-label small mb-1">il</label>
                     <select className="form-select" value={dowToDow} onChange={(e) => setDowToDow(Number(e.target.value))}>
                       {DOW_LABELS.map((d, i) => <option key={i} value={i}>{d}</option>)}
+                    </select>
+                  </div>
+                  <div className="col-12 col-lg-4">
+                    <label className="form-label small mb-1">Turno</label>
+                    <select className="form-select" value={dowToShiftTypeId} onChange={(e) => setDowToShiftTypeId(e.target.value)}>
+                      <option value="">Non definito</option>
+                      {shiftTypes.map((st) => <option key={`to-${st.id}`} value={st.id}>{st.name}</option>)}
                     </select>
                   </div>
                 </div>
@@ -531,7 +692,16 @@ export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, m
                   disabled={loading || !canEdit || dowName.trim().length < 2 || dowFromDow === dowToDow}
                   onClick={() => {
                     const id = dowEditingId ?? crypto.randomUUID();
-                    const next: DowRuleDraft = { id, name: dowName.trim(), kind: dowKind, fromDow: dowFromDow, toDow: dowToDow };
+                    const next: DowRuleDraft = {
+                      id,
+                      name: dowName.trim(),
+                      kind: dowKind,
+                      weight: dowWeight,
+                      fromDow: dowFromDow,
+                      toDow: dowToDow,
+                      fromShiftTypeId: dowFromShiftTypeId || null,
+                      toShiftTypeId: dowToShiftTypeId || null,
+                    };
                     const nextDows = dowEditingId ? dowRules.map((r) => (r.id === id ? next : r)) : [...dowRules, next];
                     void (async () => {
                       const ok = await persist(rules, nextDows);

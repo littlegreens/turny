@@ -14,6 +14,7 @@ const createShiftTypeSchema = z.object({
   minStaff: z.number().int().min(1, "minStaff deve essere almeno 1"),
   color: z.string().regex(/^#[0-9A-Fa-f]{6}$/, "Colore non valido").default("#E1F5EE"),
   activeWeekdays: z.array(z.number().int().min(0).max(6)).min(1).max(7).optional(),
+  rules: z.any().optional().nullable(),
 });
 
 function calcDurationHours(startTime: string, endTime: string) {
@@ -129,6 +130,7 @@ export async function POST(request: Request, { params }: Params) {
       color: parsed.data.color,
       order: nextOrder,
       activeWeekdays: parsed.data.activeWeekdays ?? calendar.activeWeekdays,
+      ...(parsed.data.rules !== undefined ? { rules: parsed.data.rules } : {}),
     },
   });
 

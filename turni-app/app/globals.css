@@ -406,6 +406,16 @@ textarea:focus::placeholder {
   outline-offset: 2px;
 }
 
+/** Fascia non prevista nel calendario per quel giorno (solo lettura). */
+.schedule-member-shift-na.btn,
+.schedule-member-shift-na.btn:disabled {
+  background-color: #e9ecef !important;
+  border: 2px solid #495057 !important;
+  color: #6c757d !important;
+  opacity: 1 !important;
+  cursor: not-allowed !important;
+}
+
 .turny-modal .modal-header {
   border-bottom-color: #e8efea;
 }

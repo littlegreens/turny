@@ -108,13 +108,40 @@ export async function POST(_: Request, { params }: Params) {
     "REQUIRED_DATE",
     "REQUIRED_SHIFT",
   ]);
-  const monthlyConstraints = monthlyConstraintsRaw.filter((c) => schedulerMonthlyTypes.has(String(c.type)));
+  function includeInSchedulerMonthly(c: { type: unknown; note?: string | null }): boolean {
+    const t = String(c.type);
+    if (schedulerMonthlyTypes.has(t)) return true;
+    if (t === "CUSTOM") {
+      const n = (c.note ?? "").trim();
+      return n === "GENERIC_DAY_UNLOCK" || n === "GENERIC_SHIFT_UNLOCK";
+    }
+    return false;
+  }
+  const monthlyConstraints = monthlyConstraintsRaw.filter(includeInSchedulerMonthly);
 
-  const fixedAssignments: SchedulerFixedAssignment[] = existingAssignments.map((a) => ({
-    memberId: a.memberId,
-    shiftTypeId: a.shiftTypeId,
-    date: a.date.toISOString().slice(0, 10),
-  }));
+  const monthlyUnavailable = monthlyConstraintsRaw.filter((c) => {
+    const t = String(c.type);
+    return t === "UNAVAILABLE_DATE" || t === "UNAVAILABLE_SHIFT";
+  }).length;
+  const monthlyRequired = monthlyConstraintsRaw.filter((c) => {
+    const t = String(c.type);
+    return t === "REQUIRED_DATE" || t === "REQUIRED_SHIFT";
+  }).length;
+  function countCoPresenceRules(rules: unknown): number {
+    if (!rules || typeof rules !== "object") return 0;
+    const raw = (rules as { coPresenceRules?: unknown }).coPresenceRules;
+    return Array.isArray(raw) ? raw.length : 0;
+  }
+  const coPresenceRules =
+    countCoPresenceRules(calendar?.rules ?? null) + countCoPresenceRules(access.schedule.rules ?? null);
+
+  const fixedAssignments: SchedulerFixedAssignment[] = existingAssignments.map((a) => {
+    const iso = a.date.toISOString().slice(0, 10);
+    if (!a.memberId) {
+      return { shiftTypeId: a.shiftTypeId, date: iso, isGuestFixed: true as const };
+    }
+    return { memberId: a.memberId, shiftTypeId: a.shiftTypeId, date: iso };
+  });
 
   const problem = buildSchedulerProblem({
     scheduleId,
@@ -175,14 +202,20 @@ export async function POST(_: Request, { params }: Params) {
             })),
             fixedAssignments: fixedAssignments,
             monthlyConstraintsCount: monthlyConstraints.length,
+            monthlyUnavailable,
+            monthlyRequired,
+            coPresenceRules,
           })
         : undefined;
+    const solverAlerts =
+      result.kind === "error" && Array.isArray(result.alerts) && result.alerts.length > 0 ? result.alerts : undefined;
     return NextResponse.json(
       {
         error: result.message,
         schedulerStatus: result.status,
         impossible,
         ...(hints ? { hints } : {}),
+        ...(solverAlerts ? { solverAlerts } : {}),
       },
       { status: http },
     );
@@ -199,6 +232,19 @@ export async function POST(_: Request, { params }: Params) {
   if (toCreate.length > 0) {
     await prisma.shiftAssignment.createMany({ data: toCreate, skipDuplicates: true });
   }
+
+  const prevRaw = access.schedule.generationLog;
+  const prevLog =
+    prevRaw != null && typeof prevRaw === "object" && !Array.isArray(prevRaw)
+      ? { ...(prevRaw as Record<string, unknown>) }
+      : {};
+  prevLog.lastAutoGenerateAt = new Date().toISOString();
+  prevLog.lastSolverAlerts = result.alerts ?? [];
+
+  await prisma.schedule.update({
+    where: { id: scheduleId },
+    data: { generationLog: prevLog as object },
+  });
 
   return NextResponse.json({
     created: toCreate.length,

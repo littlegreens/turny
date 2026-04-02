@@ -3,16 +3,34 @@
 import Link from "next/link";
 import type { InfeasibilityHints } from "@/lib/infeasibility-hints";
 
+export type SolverAlertItem = {
+  type: string;
+  message?: string;
+  memberId?: string;
+  date?: string;
+  shiftTypeId?: string;
+};
+
 type Props = {
   open: boolean;
   onClose: () => void;
   message: string;
   hints: InfeasibilityHints | null;
+  /** Motivi strutturati restituiti dal motore (conflitti obblighi, riepilogo vincoli, …). */
+  solverAlerts?: SolverAlertItem[];
   orgSlug: string;
   calId: string;
 };
 
-export function InfeasibleGenerateModal({ open, onClose, message, hints, orgSlug, calId }: Props) {
+export function InfeasibleGenerateModal({
+  open,
+  onClose,
+  message,
+  hints,
+  solverAlerts = [],
+  orgSlug,
+  calId,
+}: Props) {
   if (!open) return null;
 
   const calHref = `/${orgSlug}/${calId}`;
@@ -33,9 +51,23 @@ export function InfeasibleGenerateModal({ open, onClose, message, hints, orgSlug
                 <p className="mb-0 small">{message}</p>
               </div>
               <p className="small text-secondary mb-3">
-                Il motore OR-Tools non trova una combinazione che rispetti tutti i vincoli contemporaneamente. Non riceviamo il
-                «motivo» preciso dal solver: sotto trovi conteggi utili e azioni tipiche che sbloccano il problema.
+                Il motore non riesce a chiudere un piano senza violare almeno un vincolo <strong>obbligatorio</strong> nel modello
+                (coperture minime, DEVE, co-presenza, riposi tra turni, giorni consecutivi, ecc.).
               </p>
+
+              {solverAlerts.length > 0 ? (
+                <div className="mb-4">
+                  <h6 className="fw-semibold mb-2">Dettagli dal motore</h6>
+                  <ul className="list-unstyled mb-0 d-grid gap-2">
+                    {solverAlerts.map((a, i) => (
+                      <li key={`${a.type}-${i}`} className="small border rounded p-2 bg-white">
+                        <span className="text-secondary me-1">{a.type}:</span>
+                        {a.message ?? "—"}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
 
               {hints ? (
                 <>
@@ -77,6 +109,24 @@ export function InfeasibleGenerateModal({ open, onClose, message, hints, orgSlug
                         <div className="fw-bold">{hints.stats.maxMinStaffOnSingleSlot}</div>
                       </div>
                     </div>
+                    <div className="col-6 col-md-4">
+                      <div className="border rounded p-2 h-100 bg-light">
+                        <div className="text-secondary">Non disp. (periodo)</div>
+                        <div className="fw-bold">{hints.stats.monthlyUnavailable}</div>
+                      </div>
+                    </div>
+                    <div className="col-6 col-md-4">
+                      <div className="border rounded p-2 h-100 bg-light">
+                        <div className="text-secondary">Obblighi DEVE (periodo)</div>
+                        <div className="fw-bold">{hints.stats.monthlyRequired}</div>
+                      </div>
+                    </div>
+                    <div className="col-6 col-md-4">
+                      <div className="border rounded p-2 h-100 bg-light">
+                        <div className="text-secondary">Regole co-presenza</div>
+                        <div className="fw-bold">{hints.stats.coPresenceRules}</div>
+                      </div>
+                    </div>
                   </div>
 
                   <h6 className="fw-semibold mb-2">Cosa provare</h6>
@@ -91,13 +141,12 @@ export function InfeasibleGenerateModal({ open, onClose, message, hints, orgSlug
 
                   <div className="card bg-light border-0 mt-3">
                     <div className="card-body py-3 small">
-                      <div className="fw-semibold mb-1">Turni extra e «chi può coprirli»</div>
-                      <p className="mb-2 text-secondary mb-0">
-                        Se il collo di bottiglia è <strong>quantitativo</strong> (servono più assegnazioni di quante i massimali
-                        consentono), annota quanti turni extra servono e quali persone possono farli. Poi, nel calendario:
-                        aumenta il massimale mensile su quelle persone, oppure segnali come <strong>jolly</strong> chi accetta di
-                        essere usato con priorità più bassa per riempire i buchi. Se mancano proprio le persone, aggiungi persone
-                        o abbassa il minimo di copertura sui tipi turno.
+                      <div className="fw-semibold mb-1">Massimali e turni oltre contratto</div>
+                      <p className="mb-0 text-secondary">
+                        Quando una generazione <strong>riesce</strong> ma qualcuno supera il massimale mensile indicato in scheda,
+                        il piano viene comunque salvato e il <strong>report / avvisi</strong> del turno lo segnalano: il
+                        responsabile decide se accettare o correggere a mano. In caso di generazione impossibile, aumentare il
+                        tetto sulla scheda persona (o alleggerire vincoli) è spesso la leva giusta — non serve usare i jolly.
                       </p>
                     </div>
                   </div>

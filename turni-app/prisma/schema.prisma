@@ -263,7 +263,10 @@ model ShiftAssignment {
   id              String           @id @default(cuid())
   scheduleId      String
   shiftTypeId     String
-  memberId        String
+  /// Se null: assegnazione «persona extra» (tappabuchi), usare guestLabel/guestColor.
+  memberId        String?
+  guestLabel      String?
+  guestColor      String?
   date            DateTime
   status          AssignmentStatus @default(CONFIRMED)
   note            String?
@@ -271,10 +274,10 @@ model ShiftAssignment {
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 
-  schedule     Schedule        @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
-  shiftType    ShiftType       @relation(fields: [shiftTypeId], references: [id])
-  member       CalendarMember  @relation(fields: [memberId], references: [id])
-  swapRequests SwapRequest[]   @relation("OriginalAssignment")
+  schedule     Schedule         @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  shiftType    ShiftType        @relation(fields: [shiftTypeId], references: [id])
+  member       CalendarMember?  @relation(fields: [memberId], references: [id])
+  swapRequests SwapRequest[]    @relation("OriginalAssignment")
 
   @@unique([scheduleId, shiftTypeId, memberId, date])
 }

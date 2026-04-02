@@ -2,6 +2,8 @@
  * Payload JSON inviato al microservizio OR-Tools (`/generate`).
  * `schemaVersion` consente evoluzioni retrocompatibili del contratto "standard calendario".
  */
+import { parseHolidayOverrides } from "./holiday-overrides";
+import { parseProfessionalRoles } from "./professional-roles";
 
 export const SCHEDULER_PROBLEM_SCHEMA_VERSION = 1;
 
@@ -20,6 +22,11 @@ export type SchedulerShiftTypePayload = {
   isNight: boolean;
   /** Se true, il turno in sab/dom conta per i tetti weekend se calendar.rules non dice altro. */
   countsAsWeekend: boolean;
+  /**
+   * Requisiti di composizione per ruolo (minimi) risolti lato Next.
+   * `memberIds` è l’insieme membri che “contano” per quel ruolo.
+   */
+  roleCoverage?: Array<{ role: string; memberIds: string[]; minCount: number }>;
   rules: unknown;
 };
 
@@ -44,6 +51,10 @@ export type SchedulerMemberPayload = {
   requiredDates: string[];
   /** Vincoli di periodo: la persona deve essere assegnata a quel tipo turno in quella data. */
   requiredShifts: Array<{ date: string; shiftTypeId: string }>;
+  /** Date (ISO) in cui il periodo annulla il vincolo generale «giorno settimana non disp.». */
+  weekdayUnlockDates?: string[];
+  /** Coppie «data|shiftTypeId» in cui il periodo annulla il vincolo generale «evita questa fascia». */
+  shiftGenericUnlock?: string[];
   maxShiftsMonth: number | null;
   maxNightsMonth: number | null;
   maxSaturdaysMonth: number | null;
@@ -53,19 +64,28 @@ export type SchedulerMemberPayload = {
 };
 
 export type SchedulerFixedAssignment = {
-  memberId: string;
   shiftTypeId: string;
   date: string;
+  /** Assegnazione membro calendario (normale). */
+  memberId?: string;
+  /** Persone extra già in griglia: contano sulla copertura, non sono variabili nel solver. */
+  isGuestFixed?: boolean;
 };
 
 export type SchedulerCoPresenceRule = {
   id: string;
   name: string;
   kind: "ALWAYS_WITH" | "NEVER_WITH";
+  /** SOFT (default, retrocompat): penalità + alert se violata. HARD: vincolo diretto, mai violabile. */
+  weight?: "SOFT" | "HARD";
   ifMemberIds: string[];
   thenMemberIds: string[];
   /** Se vuoto: applica su tutte le date del periodo. */
   dates?: string[];
+  /** Se valorizzato: regola valida solo sui turni inclusi. */
+  shiftTypeIds?: string[];
+  /** Se valorizzato: esclude questi turni dalla regola. */
+  excludeShiftTypeIds?: string[];
 };
 
 export type SchedulerProblemPayload = {
@@ -75,11 +95,15 @@ export type SchedulerProblemPayload = {
   timezone: string;
   /** Se true, vietato lavorare il giorno dopo un turno notte (fisso o generato). */
   restAfterNight: boolean;
+  restDaysAfterNight?: number;
   calendarRules: SchedulerCalendarRules | null;
+  dowRules?: Array<{ id: string; name: string; kind: string; fromDow: number; toDow: number; fromShiftTypeId?: string; toShiftTypeId?: string }>;
   shiftTypes: SchedulerShiftTypePayload[];
   members: SchedulerMemberPayload[];
   fixedAssignments: SchedulerFixedAssignment[];
   coPresenceRules?: SchedulerCoPresenceRule[];
+  /** Giorni festivi / chiusure / fasce custom da `calendar.rules.holidayOverrides`. */
+  holidayOverrides?: Array<{ date: string; mode: string; shiftTypeIds?: string[] }>;
   /**
    * Cambia i coefficienti minori nell’obiettivo CP-SAT → piani diversi tra un “Genera” e l’altro se le soluzioni erano equivalenti.
    */
@@ -177,7 +201,7 @@ function restDaysAfterNight(rules: SchedulerCalendarRules | null): number {
   return typeof v === "number" && v >= 1 ? Math.min(Math.floor(v), 3) : 1;
 }
 
-function extractDowRules(rules: SchedulerCalendarRules | null): Array<{ id: string; name: string; kind: string; fromDow: number; toDow: number }> {
+function extractDowRules(rules: SchedulerCalendarRules | null): Array<{ id: string; name: string; kind: string; fromDow: number; toDow: number; fromShiftTypeId?: string; toShiftTypeId?: string }> {
   if (!rules || typeof rules !== "object") return [];
   const list = (rules as { dowRules?: unknown }).dowRules;
   if (!Array.isArray(list)) return [];
@@ -187,8 +211,11 @@ function extractDowRules(rules: SchedulerCalendarRules | null): Array<{ id: stri
       id: String(r.id ?? ""),
       name: String(r.name ?? ""),
       kind: String(r.kind ?? ""),
+      weight: String(r.weight ?? "SOFT"),
       fromDow: Number(r.fromDow ?? 0),
       toDow: Number(r.toDow ?? 0),
+      fromShiftTypeId: r.fromShiftTypeId ? String(r.fromShiftTypeId) : undefined,
+      toShiftTypeId: r.toShiftTypeId ? String(r.toShiftTypeId) : undefined,
     }))
     .filter((r) => r.kind === "DAY_IMPLIES_DAY" || r.kind === "DAY_EXCLUDES_DAY");
 }
@@ -239,12 +266,13 @@ export function buildSchedulerProblem(params: {
 
   const roleToMemberIds = new Map<string, string[]>();
   for (const m of params.members) {
-    const role = String(m.role ?? "").trim();
-    if (!role) continue;
-    const key = role.toLowerCase();
-    const list = roleToMemberIds.get(key) ?? [];
-    list.push(m.id);
-    roleToMemberIds.set(key, list);
+    const roles = parseProfessionalRoles(String(m.role ?? ""));
+    for (const role of roles) {
+      const key = role.toLowerCase();
+      const list = roleToMemberIds.get(key) ?? [];
+      list.push(m.id);
+      roleToMemberIds.set(key, list);
+    }
   }
 
   function selectorsToMemberIds(selectors: unknown): string[] {
@@ -293,18 +321,36 @@ export function buildSchedulerProblem(params: {
         const ifIds = Array.isArray(ifMemberIds) ? ifMemberIds.filter(Boolean) : [];
         const thenIds = Array.isArray(thenMemberIds) ? thenMemberIds.filter(Boolean) : [];
         if (!ifIds.length || !thenIds.length) return [];
-        const dates = Array.isArray((r as { dates?: unknown }).dates)
+        const datesRaw = Array.isArray((r as { dates?: unknown }).dates)
           ? ((r as { dates: unknown[] }).dates.map(String).filter(Boolean) as string[])
           : undefined;
-        if (dates && dates.length && !dates.some((d) => scope.has(d))) return [];
+        const whenDow = (r as { whenDow?: unknown }).whenDow;
+        const excludeDow = (r as { excludeDow?: unknown }).excludeDow;
+        const whenShiftTypeId = (r as { whenShiftTypeId?: unknown }).whenShiftTypeId;
+        const excludeShiftTypeId = (r as { excludeShiftTypeId?: unknown }).excludeShiftTypeId;
+        const fromDates = datesRaw && datesRaw.length ? datesRaw.filter((d) => scope.has(d)) : params.dates;
+        const filteredDates = fromDates.filter((d) => {
+          const dow = utcDow(d);
+          if (typeof whenDow === "number" && dow !== whenDow) return false;
+          if (typeof excludeDow === "number" && dow === excludeDow) return false;
+          return true;
+        });
+        if (!filteredDates.length) return [];
+        const includeShiftTypeIds = typeof whenShiftTypeId === "string" && whenShiftTypeId.trim() ? [whenShiftTypeId.trim()] : undefined;
+        const excludeShiftTypeIds = typeof excludeShiftTypeId === "string" && excludeShiftTypeId.trim() ? [excludeShiftTypeId.trim()] : undefined;
+        const rawWeight = String((r as { weight?: unknown }).weight ?? "SOFT").toUpperCase();
+        const coWeight: "SOFT" | "HARD" = rawWeight === "HARD" ? "HARD" : "SOFT";
         return [
           {
             id: String((r as { id?: unknown }).id || ""),
             name: String((r as { name?: unknown }).name || ""),
             kind,
+            weight: coWeight,
             ifMemberIds: ifIds,
             thenMemberIds: thenIds,
-            dates,
+            dates: filteredDates,
+            ...(includeShiftTypeIds ? { shiftTypeIds: includeShiftTypeIds } : {}),
+            ...(excludeShiftTypeIds ? { excludeShiftTypeIds } : {}),
           } satisfies SchedulerCoPresenceRule,
         ];
       })
@@ -322,6 +368,8 @@ export function buildSchedulerProblem(params: {
     const unavailableShifts: Array<{ date: string; shiftTypeId: string }> = [];
     const requiredDates = new Set<string>();
     const requiredShifts: Array<{ date: string; shiftTypeId: string }> = [];
+    const weekdayUnlockDates = new Set<string>();
+    const shiftGenericUnlock = new Set<string>();
     const shiftHard = new Set<string>();
     const shiftSoft = new Set<string>();
     const wdHard = new Set<number>();
@@ -339,13 +387,16 @@ export function buildSchedulerProblem(params: {
       if (c.type === "UNAVAILABLE_SHIFT") {
         const sid = (c.value as { shiftTypeId?: string }).shiftTypeId;
         if (!sid) continue;
-        if (c.weight === "HARD") shiftHard.add(sid);
-        else shiftSoft.add(sid);
+        // Nel configuratore le indisponibilita generali devono valere subito nel solve:
+        // se sono salvate come SOFT le trattiamo comunque come vincolo effettivo.
+        shiftHard.add(sid);
+        if (c.weight !== "HARD") shiftSoft.add(sid);
       } else if (c.type === "UNAVAILABLE_WEEKDAY") {
         const wd = (c.value as { weekday?: number }).weekday;
         if (typeof wd !== "number") continue;
-        if (c.weight === "HARD") wdHard.add(wd);
-        else wdSoft.add(wd);
+        // Stessa logica dei turni: anche i weekdays SOFT vengono applicati nel solve.
+        wdHard.add(wd);
+        if (c.weight !== "HARD") wdSoft.add(wd);
       } else if (c.type === "MAX_SHIFTS_MONTH" && c.weight === "HARD") {
         const v = c.value as { max?: number; count?: number };
         const max = typeof v.max === "number" ? v.max : typeof v.count === "number" ? v.count : null;
@@ -401,8 +452,33 @@ export function buildSchedulerProblem(params: {
         const d = (c.value as { date?: string; shiftTypeId?: string }).date;
         const sid = (c.value as { shiftTypeId?: string }).shiftTypeId;
         if (d && sid && scope.has(d)) requiredShifts.push({ date: d, shiftTypeId: sid });
+      } else if (c.type === "CUSTOM") {
+        const note = String(c.note ?? "").trim();
+        const v = c.value as { date?: string; shiftTypeId?: string };
+        const d = v.date;
+        if (!d || !scope.has(d)) continue;
+        if (note === "GENERIC_DAY_UNLOCK") {
+          weekdayUnlockDates.add(d);
+        } else if (note === "GENERIC_SHIFT_UNLOCK") {
+          const sid = v.shiftTypeId;
+          if (sid) shiftGenericUnlock.add(`${d}|${sid}`);
+        }
       }
     }
+
+    // Unlock e DEVE vincono su indisponibilità generali: pulire le liste prima di costruire il payload.
+    for (const d of weekdayUnlockDates) unavailableDates.delete(d);
+    for (const d of requiredDates) unavailableDates.delete(d);
+    for (const rs of requiredShifts) {
+      unavailableDates.delete(rs.date);
+    }
+
+    const cleanShifts = unavailableShifts.filter((us) => {
+      if (weekdayUnlockDates.has(us.date)) return false;
+      if (shiftGenericUnlock.has(`${us.date}|${us.shiftTypeId}`)) return false;
+      if (requiredShifts.some((rs) => rs.date === us.date && rs.shiftTypeId === us.shiftTypeId)) return false;
+      return true;
+    });
 
     return {
       id: m.id,
@@ -411,9 +487,11 @@ export function buildSchedulerProblem(params: {
       isJolly: m.isJolly,
       maxConsecutiveDays: maxConsecutive,
       unavailableDates: [...unavailableDates].sort(),
-      unavailableShifts: unavailableShifts,
+      unavailableShifts: cleanShifts,
       requiredDates: [...requiredDates].sort(),
       requiredShifts,
+      ...(weekdayUnlockDates.size ? { weekdayUnlockDates: [...weekdayUnlockDates].sort() } : {}),
+      ...(shiftGenericUnlock.size ? { shiftGenericUnlock: [...shiftGenericUnlock].sort() } : {}),
       unavailableShiftTypeIdsHard: [...shiftHard],
       unavailableWeekdaysHard: [...wdHard].sort(),
       unavailableShiftTypeIdsSoft: [...shiftSoft],
@@ -426,6 +504,45 @@ export function buildSchedulerProblem(params: {
     };
   });
 
+  const holidayFromCalendar = parseHolidayOverrides(calRules);
+  const holidayFromSchedule = parseHolidayOverrides(schedRules);
+  const holidayMergedByDate = (() => {
+    const m = new Map<string, (typeof holidayFromCalendar)[number]>();
+    for (const h of holidayFromCalendar) m.set(h.date, h);
+    for (const h of holidayFromSchedule) m.set(h.date, h);
+    return [...m.values()];
+  })();
+
+  const holidayForSolver = holidayMergedByDate.map((h) => ({
+    date: h.date,
+    mode: h.mode,
+    ...(h.shiftTypeIds?.length ? { shiftTypeIds: h.shiftTypeIds } : {}),
+  }));
+
+  function roleCoverageForShiftType(st: { minStaff: number; rules: unknown }) {
+    const r = st.rules as { roleSlots?: unknown } | null | undefined;
+    const rawSlots = Array.isArray(r?.roleSlots) ? (r!.roleSlots as unknown[]) : [];
+    const slots = Array.from({ length: Math.max(1, st.minStaff) }, (_, i) => {
+      const v = rawSlots[i];
+      return typeof v === "string" && v.trim() ? v.trim() : null;
+    });
+    const counts = new Map<string, number>();
+    for (const role of slots) {
+      if (!role) continue;
+      const key = role.toLowerCase();
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    if (counts.size === 0) return null;
+    const out = [...counts.entries()]
+      .map(([roleLower, minCount]) => ({
+        role: roleLower,
+        memberIds: roleToMemberIds.get(roleLower) ?? [],
+        minCount,
+      }))
+      .filter((x) => x.minCount > 0);
+    return out.length ? out : null;
+  }
+
   return {
     schemaVersion: SCHEDULER_PROBLEM_SCHEMA_VERSION,
     scheduleId: params.scheduleId,
@@ -435,6 +552,7 @@ export function buildSchedulerProblem(params: {
     restDaysAfterNight: restDaysAfterNight(calRules),
     calendarRules: calRules,
     ...(extractDowRules(calRules).length ? { dowRules: extractDowRules(calRules) } : {}),
+    ...(holidayForSolver.length ? { holidayOverrides: holidayForSolver } : {}),
     shiftTypes: params.shiftTypes.map((st) => ({
       id: st.id,
       name: st.name,
@@ -446,6 +564,7 @@ export function buildSchedulerProblem(params: {
       durationHours: st.durationHours,
       isNight: shiftIsNight(st),
       countsAsWeekend: shiftCountsWeekend(st.rules),
+      ...(roleCoverageForShiftType(st) ? { roleCoverage: roleCoverageForShiftType(st)! } : {}),
       rules: st.rules,
     })),
     members: membersOut,

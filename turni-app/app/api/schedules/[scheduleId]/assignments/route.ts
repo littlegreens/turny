@@ -5,11 +5,20 @@ import { authOptions } from "@/lib/auth";
 import { authorizeScheduleAccess, canEditScheduleAssignments } from "@/lib/schedule-access";
 import { prisma } from "@/lib/prisma";
 
-const createAssignmentSchema = z.object({
-  memberId: z.string().min(1),
-  shiftTypeId: z.string().min(1),
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data non valida"),
-});
+const createAssignmentSchema = z
+  .object({
+    memberId: z.string().min(1).optional(),
+    guestLabel: z.string().min(1).max(120).optional(),
+    guestColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
+    shiftTypeId: z.string().min(1),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data non valida"),
+  })
+  .refine(
+    (d) =>
+      Boolean(d.memberId && d.memberId.length > 0) !==
+      Boolean(d.guestLabel && d.guestLabel.trim().length > 0),
+    { message: "Indica un membro oppure nome e colore per persona extra." },
+  );
 
 type Params = {
   params: Promise<{ scheduleId: string }>;
@@ -32,7 +41,7 @@ export async function POST(request: Request, { params }: Params) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Input non valido" }, { status: 400 });
   }
 
-  const { memberId, shiftTypeId, date } = parsed.data;
+  const { memberId, guestLabel, guestColor, shiftTypeId, date } = parsed.data;
   const d = new Date(`${date}T00:00:00.000Z`);
   const meta = (access.schedule.generationLog ?? {}) as { startDate?: string; endDate?: string };
   if (meta.startDate && meta.endDate) {
@@ -47,25 +56,31 @@ export async function POST(request: Request, { params }: Params) {
     }
   }
 
-  const [member, shiftType] = await Promise.all([
-    prisma.calendarMember.findUnique({ where: { id: memberId } }),
-    prisma.shiftType.findUnique({ where: { id: shiftTypeId } }),
-  ]);
+  const shiftType = await prisma.shiftType.findUnique({ where: { id: shiftTypeId } });
 
-  if (!member || member.calendarId !== access.schedule.calendarId) {
-    return NextResponse.json({ error: "Persona calendario non valida" }, { status: 400 });
-  }
   if (!shiftType || shiftType.calendarId !== access.schedule.calendarId) {
     return NextResponse.json({ error: "Tipo turno non valido" }, { status: 400 });
   }
+
+  const isGuest = !memberId || !memberId.trim();
+  if (!isGuest) {
+    const member = await prisma.calendarMember.findUnique({ where: { id: memberId } });
+    if (!member || member.calendarId !== access.schedule.calendarId) {
+      return NextResponse.json({ error: "Persona calendario non valida" }, { status: 400 });
+    }
+  }
+
+  const guestColorNorm = guestColor?.trim() || "#6b7280";
 
   try {
     const created = await prisma.shiftAssignment.create({
       data: {
         scheduleId,
-        memberId,
         shiftTypeId,
         date: d,
+        ...(isGuest
+          ? { memberId: null, guestLabel: guestLabel!.trim(), guestColor: guestColorNorm }
+          : { memberId, guestLabel: null, guestColor: null }),
       },
       include: {
         member: { include: { user: { select: { firstName: true, lastName: true, email: true } } } },
@@ -73,14 +88,21 @@ export async function POST(request: Request, { params }: Params) {
       },
     });
 
+    const memberLabel = created.member
+      ? `${`${created.member.user.firstName} ${created.member.user.lastName}`.trim() || created.member.user.email}`
+      : (created.guestLabel ?? "Extra");
+
     return NextResponse.json(
       {
         assignment: {
           id: created.id,
-          memberId: created.memberId,
+          memberId: created.memberId ?? undefined,
+          isGuest: !created.memberId,
+          guestLabel: created.guestLabel ?? undefined,
+          guestColor: created.guestColor ?? undefined,
           shiftTypeId: created.shiftTypeId,
           date: created.date.toISOString().slice(0, 10),
-          memberLabel: `${`${created.member.user.firstName} ${created.member.user.lastName}`.trim() || created.member.user.email}`,
+          memberLabel,
           shiftTypeName: created.shiftType.name,
           shiftTypeColor: created.shiftType.color,
         },
@@ -108,6 +130,21 @@ export async function DELETE(_: Request, { params }: Params) {
     return NextResponse.json({ error: "Svuotamento non consentito" }, { status: 403 });
   }
 
-  await prisma.shiftAssignment.deleteMany({ where: { scheduleId } });
+  const prevRaw = access.schedule.generationLog;
+  const nextLog =
+    prevRaw != null && typeof prevRaw === "object" && !Array.isArray(prevRaw)
+      ? { ...(prevRaw as Record<string, unknown>) }
+      : {};
+  nextLog.lastSolverAlerts = [];
+  delete nextLog.lastAutoGenerateAt;
+
+  await prisma.$transaction([
+    prisma.shiftAssignment.deleteMany({ where: { scheduleId } }),
+    prisma.schedule.update({
+      where: { id: scheduleId },
+      data: { generationLog: nextLog as object },
+    }),
+  ]);
+
   return NextResponse.json({ ok: true });
 }

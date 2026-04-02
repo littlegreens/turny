@@ -9,6 +9,7 @@ import { canEditScheduleAssignments } from "@/lib/schedule-access";
 import { fetchOrgMemberDisplayColors } from "@/lib/org-member-display-colors";
 import { prisma } from "@/lib/prisma";
 import { resolveMemberRowColor } from "@/lib/member-row-color";
+import { parseHolidayOverrides } from "@/lib/holiday-overrides";
 import { buildScheduleReport } from "@/lib/schedule-report";
 import { shiftIsNight } from "@/lib/scheduler-problem";
 
@@ -79,7 +80,7 @@ export default async function ScheduleGridPage({ params, searchParams }: Props) 
     }),
     prisma.monthlyConstraint.findMany({
       where: { scheduleId: schedule.id },
-      select: { id: true, memberId: true, type: true, value: true },
+      select: { id: true, memberId: true, type: true, value: true, note: true },
     }),
   ]);
 
@@ -89,7 +90,15 @@ export default async function ScheduleGridPage({ params, searchParams }: Props) 
     "REQUIRED_DATE",
     "REQUIRED_SHIFT",
   ]);
-  const monthlyConstraintsForGrid = monthlyConstraints.filter((c) => gridMonthlyTypes.has(String(c.type)));
+  const monthlyConstraintsForGrid = monthlyConstraints.filter((c) => {
+    const t = String(c.type);
+    if (gridMonthlyTypes.has(t)) return true;
+    if (t === "CUSTOM") {
+      const n = (c.note ?? "").trim();
+      return n === "GENERIC_DAY_UNLOCK" || n === "GENERIC_SHIFT_UNLOCK";
+    }
+    return false;
+  });
 
   const userIds = [...new Set(members.map((m) => m.userId))];
   const orgMemberColors = await fetchOrgMemberDisplayColors(schedule.calendar.orgId, userIds);
@@ -105,6 +114,13 @@ export default async function ScheduleGridPage({ params, searchParams }: Props) 
       ? `dal ${periodMeta.startDate ?? "?"} al ${periodMeta.endDate ?? "?"}`
       : `${capitalizeFirst(new Intl.DateTimeFormat("it-IT", { month: "long" }).format(new Date(schedule.year, schedule.month - 1, 1)))} ${schedule.year}`;
 
+  const holidayOverridesMerged = (() => {
+    const m = new Map<string, unknown>();
+    for (const h of parseHolidayOverrides(schedule.calendar.rules)) m.set(h.date, h);
+    for (const h of parseHolidayOverrides(schedule.rules)) m.set(h.date, h);
+    return [...m.values()];
+  })();
+
   const report = buildScheduleReport({
     year: schedule.year,
     month: schedule.month,
@@ -118,7 +134,9 @@ export default async function ScheduleGridPage({ params, searchParams }: Props) 
       isNight: shiftIsNight(st),
     })),
     assignments: assignments.map((a) => ({
-      memberId: a.memberId,
+      ...(a.memberId ? { memberId: a.memberId } : {}),
+      guestLabel: a.guestLabel,
+      guestColor: a.guestColor,
       shiftTypeId: a.shiftTypeId,
       date: a.date.toISOString().slice(0, 10),
     })),
@@ -129,9 +147,12 @@ export default async function ScheduleGridPage({ params, searchParams }: Props) 
       professionalRole: m.user.professionalRole || "",
       contractMode: m.contractMode,
     })),
+    holidayOverrides: holidayOverridesMerged as any,
   });
 
-  const reportCsvFilename = `turni-${schedule.year}-${String(schedule.month).padStart(2, "0")}-${schedule.calendar.name.replace(/\s+/g, "-")}.csv`;
+  const generationLog = schedule.generationLog as { lastSolverAlerts?: unknown[] } | null | undefined;
+  const fromLog = generationLog?.lastSolverAlerts;
+  const initialSolverAlerts = Array.isArray(fromLog) ? fromLog : [];
 
   return (
     <>
@@ -165,6 +186,7 @@ export default async function ScheduleGridPage({ params, searchParams }: Props) 
         endDate={periodMeta.endDate}
         canEdit={canEdit}
         scheduleRules={(schedule.rules ?? null) as unknown}
+        holidayOverrides={holidayOverridesMerged as any}
         shiftTypes={shiftTypes.map((st) => ({
           id: st.id,
           name: st.name,
@@ -223,24 +245,50 @@ export default async function ScheduleGridPage({ params, searchParams }: Props) 
             calendarColorOverride: calColor,
           };
         })}
-        assignments={assignments.map((a) => ({
-          id: a.id,
-          memberId: a.memberId,
-          shiftTypeId: a.shiftTypeId,
-          date: a.date.toISOString().slice(0, 10),
-          memberLabel: `${`${a.member.user.firstName} ${a.member.user.lastName}`.trim() || a.member.user.email}`,
-          shiftTypeName: a.shiftType.name,
-          shiftTypeColor: a.shiftType.color,
-        }))}
-        monthlyUnavailable={monthlyConstraintsForGrid.map((c) => ({
-          id: c.id,
-          memberId: c.memberId,
-          date: (c.value as { date?: string })?.date ?? "",
-          type: c.type as "UNAVAILABLE_DATE" | "UNAVAILABLE_SHIFT" | "REQUIRED_DATE" | "REQUIRED_SHIFT",
-          shiftTypeId: (c.value as { shiftTypeId?: string })?.shiftTypeId ?? null,
-        }))}
+        assignments={assignments.map((a) => {
+          const guest = !a.memberId;
+          const memberLabel = a.member
+            ? `${`${a.member.user.firstName} ${a.member.user.lastName}`.trim() || a.member.user.email}`
+            : (a.guestLabel?.trim() || "Extra");
+          return {
+            id: a.id,
+            memberId: a.memberId ?? "",
+            isGuest: guest,
+            ...(guest
+              ? { guestLabel: a.guestLabel ?? undefined, guestColor: a.guestColor ?? undefined }
+              : {}),
+            shiftTypeId: a.shiftTypeId,
+            date: a.date.toISOString().slice(0, 10),
+            memberLabel,
+            shiftTypeName: a.shiftType.name,
+            shiftTypeColor: a.shiftType.color,
+            isAutoGenerated: a.isAutoGenerated,
+          };
+        })}
+        monthlyUnavailable={monthlyConstraintsForGrid.map((c) => {
+          const t = String(c.type);
+          if (t === "CUSTOM") {
+            const v = c.value as { date?: string; shiftTypeId?: string };
+            return {
+              id: c.id,
+              memberId: c.memberId,
+              date: v.date ?? "",
+              type: "CUSTOM" as const,
+              note: (c.note ?? "").trim(),
+              shiftTypeId: v.shiftTypeId ?? null,
+            };
+          }
+          return {
+            id: c.id,
+            memberId: c.memberId,
+            date: (c.value as { date?: string })?.date ?? "",
+            type: c.type as "UNAVAILABLE_DATE" | "UNAVAILABLE_SHIFT" | "REQUIRED_DATE" | "REQUIRED_SHIFT",
+            shiftTypeId: (c.value as { shiftTypeId?: string })?.shiftTypeId ?? null,
+            note: null,
+          };
+        })}
         reportSummary={report}
-        reportCsvFilename={reportCsvFilename}
+        initialSolverAlerts={initialSolverAlerts}
       />
 
       <div className="mt-4">

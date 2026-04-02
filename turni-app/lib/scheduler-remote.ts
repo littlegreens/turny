@@ -28,6 +28,8 @@ export type RemoteSolveError = {
   kind: "error";
   status: string;
   message: string;
+  /** Presente per INFEASIBLE / UNKNOWN: alert dal motore (conflitti obblighi, ecc.). */
+  alerts?: NonNullable<RemoteSolveOk["alerts"]>;
 };
 
 export type RemoteSolveResult = RemoteSolveOk | RemoteSolveError;
@@ -70,6 +72,7 @@ export async function callSchedulerSolve(scheduleId: string, problem: SchedulerP
     const status = raw.status ?? "UNKNOWN";
     if (status !== "OPTIMAL" && status !== "FEASIBLE") {
       const impossible = status === "INFEASIBLE" || status === "MODEL_INVALID";
+      const alerts = Array.isArray(raw.alerts) ? raw.alerts : undefined;
       return {
         kind: "error",
         status,
@@ -78,6 +81,7 @@ export async function callSchedulerSolve(scheduleId: string, problem: SchedulerP
           (impossible
             ? "Nessuna assegnazione possibile rispetto ai vincoli (problema impossibile)."
             : "Il solver non ha prodotto una soluzione accettabile."),
+        ...(alerts?.length ? { alerts } : {}),
       };
     }
 

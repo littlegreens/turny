@@ -119,6 +119,8 @@ export function OrgMemberCreateForm({ orgSlug, canManage, canAssignAdmin, profes
           suggestions={professionalRoleSuggestions}
           disabled={!canManage || loading}
           placeholder="Es. Medico, Infermiere"
+          orgSlug={orgSlug}
+          canManageGlobalRoles={canManage}
         />
       </div>
       <div className="col-md-6">

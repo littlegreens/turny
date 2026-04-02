@@ -10,10 +10,20 @@ import { WEEKDAY_OPTIONS } from "@/lib/weekdays";
 type Props = {
   calId: string;
   canCreate: boolean;
+  roleOptions?: string[];
   onCreated?: () => void;
 };
 
-export function ShiftTypeCreateForm({ calId, canCreate, onCreated }: Props) {
+type ShiftTypeRulesDraft = {
+  roleSlots?: Array<string | null>;
+};
+
+function normalizeRoleSlots(minStaff: number, slots: Array<string | null> | undefined): Array<string | null> {
+  const out = Array.from({ length: Math.max(1, minStaff) }, (_, i) => slots?.[i] ?? null);
+  return out;
+}
+
+export function ShiftTypeCreateForm({ calId, canCreate, roleOptions = [], onCreated }: Props) {
   const router = useRouter();
   const { showToast } = useAppToast();
   const [name, setName] = useState("");
@@ -22,9 +32,16 @@ export function ShiftTypeCreateForm({ calId, canCreate, onCreated }: Props) {
   const [minStaff, setMinStaff] = useState(1);
   const [color, setColor] = useState("#E1F5EE");
   const [activeWeekdays, setActiveWeekdays] = useState<number[]>([1, 2, 3, 4, 5]);
+  const [roleSlots, setRoleSlots] = useState<Array<string | null>>([null]);
   const [weekdaysOpen, setWeekdaysOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const weekdayRows = [[1, 2, 3], [4, 5, 6], [0]];
+
+  function updateMinStaff(next: number) {
+    const v = Math.max(1, Math.floor(next || 1));
+    setMinStaff(v);
+    setRoleSlots((prev) => normalizeRoleSlots(v, prev));
+  }
 
   function toggleWeekday(day: number) {
     if (activeWeekdays.includes(day)) {
@@ -51,6 +68,7 @@ export function ShiftTypeCreateForm({ calId, canCreate, onCreated }: Props) {
         minStaff,
         color,
         activeWeekdays,
+        rules: { roleSlots: normalizeRoleSlots(minStaff, roleSlots) } satisfies ShiftTypeRulesDraft,
       }),
     });
 
@@ -68,6 +86,7 @@ export function ShiftTypeCreateForm({ calId, canCreate, onCreated }: Props) {
     setMinStaff(1);
     setColor("#E1F5EE");
     setActiveWeekdays([1, 2, 3, 4, 5]);
+    setRoleSlots([null]);
     setWeekdaysOpen(false);
     setLoading(false);
     onCreated?.();
@@ -115,7 +134,7 @@ export function ShiftTypeCreateForm({ calId, canCreate, onCreated }: Props) {
           min={1}
           className="form-control input-underlined"
           value={minStaff}
-          onChange={(event) => setMinStaff(Number(event.target.value))}
+          onChange={(event) => updateMinStaff(Number(event.target.value))}
           required
           disabled={!canCreate || loading}
         />
@@ -151,6 +170,41 @@ export function ShiftTypeCreateForm({ calId, canCreate, onCreated }: Props) {
             ))}
           </div>
         ) : null}
+      </div>
+      <div className="col-12">
+        <label className="form-label small mb-1">Ruoli per slot</label>
+        <div className="d-grid gap-2">
+          {normalizeRoleSlots(minStaff, roleSlots).map((v, idx) => (
+            <div key={idx} className="d-flex align-items-center gap-2">
+              <span className="small text-secondary" style={{ minWidth: 64 }}>
+                Slot {idx + 1}
+              </span>
+              <select
+                className="form-select input-underlined"
+                value={v ?? ""}
+                onChange={(e) => {
+                  const next = e.target.value ? e.target.value : null;
+                  setRoleSlots((prev) => {
+                    const out = normalizeRoleSlots(minStaff, prev);
+                    out[idx] = next;
+                    return out;
+                  });
+                }}
+                disabled={!canCreate || loading}
+              >
+                <option value="">Indifferente</option>
+                {roleOptions.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ))}
+        </div>
+        <div className="small text-secondary mt-1">
+          Se un ruolo è impostato, in generazione il motore prova a garantire almeno quel numero di persone con quel ruolo.
+        </div>
       </div>
       <div className="col-12">
         <button className="btn btn-success" type="submit" disabled={!canCreate || loading}>

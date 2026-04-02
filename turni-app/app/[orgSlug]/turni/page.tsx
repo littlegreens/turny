@@ -203,7 +203,7 @@ async function WorkerTurnsPreviewContainer({ scheduleId, currentUserId }: { sche
       where: { calendarId: schedule.calendarId, isActive: true },
       include: {
         user: { select: { firstName: true, lastName: true, email: true } },
-        constraints: { where: { type: "CUSTOM", note: "MEMBER_COLOR" }, select: { value: true } },
+        constraints: { where: { type: "CUSTOM", note: "MEMBER_COLOR" }, select: { type: true, note: true, value: true } },
       },
       orderBy: { joinedAt: "asc" },
     }),
@@ -254,15 +254,23 @@ async function WorkerTurnsPreviewContainer({ scheduleId, currentUserId }: { sche
         activeWeekdays: st.activeWeekdays,
       }))}
       members={members}
-      assignments={assignments.map((a) => ({
-        id: a.id,
-        memberId: a.memberId,
-        shiftTypeId: a.shiftTypeId,
-        date: a.date.toISOString().slice(0, 10),
-        memberLabel: `${`${a.member.user.firstName} ${a.member.user.lastName}`.trim() || a.member.user.email}`,
-        shiftTypeName: a.shiftType.name,
-        shiftTypeColor: a.shiftType.color,
-      }))}
+      assignments={assignments.map((a) => {
+        const guest = !a.memberId;
+        const memberLabel = a.member
+          ? `${`${a.member.user.firstName} ${a.member.user.lastName}`.trim() || a.member.user.email}`
+          : (a.guestLabel?.trim() || "Extra");
+        return {
+          id: a.id,
+          memberId: a.memberId ?? "",
+          isGuest: guest,
+          ...(guest ? { guestColor: a.guestColor ?? undefined } : {}),
+          shiftTypeId: a.shiftTypeId,
+          date: a.date.toISOString().slice(0, 10),
+          memberLabel,
+          shiftTypeName: a.shiftType.name,
+          shiftTypeColor: a.shiftType.color,
+        };
+      })}
     />
   );
 }

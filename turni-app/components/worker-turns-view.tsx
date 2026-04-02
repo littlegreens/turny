@@ -25,6 +25,9 @@ type MemberOpt = {
 type GridAssignment = {
   id: string;
   memberId: string;
+  /** Persona extra: memberId vuoto, usa guestColor per il chip. */
+  isGuest?: boolean;
+  guestColor?: string | null;
   shiftTypeId: string;
   date: string;
   memberLabel: string;
@@ -208,13 +211,15 @@ export function WorkerTurnsView({
                         <td key={`preview-${d.dateStr}-${st.id}`} className="p-2" style={{ background: shiftInactive ? "#f8f9fa" : `${st.color}14`, minHeight: 96 }}>
                           <div className="d-flex flex-wrap gap-1 align-items-start">
                             {cell.map((a) => {
-                              const m = memberById.get(a.memberId);
-                              const chipBg = m?.memberColor ? `${m.memberColor}1f` : `${a.shiftTypeColor}2a`;
+                              const m = a.isGuest ? undefined : memberById.get(a.memberId);
+                              const c = a.isGuest ? (a.guestColor ?? "#6b7280") : null;
+                              const chipBg = c ? `${c}1f` : m?.memberColor ? `${m.memberColor}1f` : `${a.shiftTypeColor}2a`;
+                              const color = c ?? m?.memberColor ?? "#1f2937";
                               return (
                                 <span
                                   key={`preview-chip-${a.id}`}
                                   className="d-inline-flex align-items-center rounded-2 px-2 py-2 small fw-semibold"
-                                  style={{ backgroundColor: chipBg, color: m?.memberColor ?? "#1f2937" }}
+                                  style={{ backgroundColor: chipBg, color }}
                                 >
                                   {a.memberLabel}
                                 </span>
@@ -249,9 +254,12 @@ export function WorkerTurnsView({
                           <div className="d-flex flex-wrap gap-1 mt-1">
                             {cell.length === 0 ? <span className="small text-secondary">—</span> : null}
                             {cell.slice(0, 3).map((a) => {
-                              const m = memberById.get(a.memberId);
+                              const m = a.isGuest ? undefined : memberById.get(a.memberId);
+                              const c = a.isGuest ? (a.guestColor ?? "#6b7280") : null;
+                              const chipBg = c ? `${c}1f` : m?.memberColor ? `${m.memberColor}1f` : `${a.shiftTypeColor}2a`;
+                              const color = c ?? m?.memberColor ?? "#1f2937";
                               return (
-                                <span key={`cal-chip-${a.id}`} className="d-inline-flex rounded-2 px-2 py-1 small fw-semibold" style={{ backgroundColor: m?.memberColor ? `${m.memberColor}1f` : `${a.shiftTypeColor}2a`, color: m?.memberColor ?? "#1f2937" }}>
+                                <span key={`cal-chip-${a.id}`} className="d-inline-flex rounded-2 px-2 py-1 small fw-semibold" style={{ backgroundColor: chipBg, color }}>
                                   {a.memberLabel}
                                 </span>
                               );
