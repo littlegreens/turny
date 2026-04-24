@@ -45,17 +45,17 @@ export async function DELETE(request: Request, { params }: Params) {
     },
   });
 
-  const updates = orgUsers
-    .map((row) => {
-      const current = parseProfessionalRoles(row.user.professionalRole ?? "");
-      const next = current.filter((r) => r.toLowerCase() !== roleToRemove);
-      if (next.length === current.length) return null;
-      return prisma.user.update({
+  const updates = orgUsers.flatMap((row) => {
+    const current = parseProfessionalRoles(row.user.professionalRole ?? "");
+    const next = current.filter((r) => r.toLowerCase() !== roleToRemove);
+    if (next.length === current.length) return [];
+    return [
+      prisma.user.update({
         where: { id: row.userId },
         data: { professionalRole: serializeProfessionalRoles(next) },
-      });
-    })
-    .filter(Boolean);
+      }),
+    ];
+  });
 
   if (updates.length) {
     await prisma.$transaction(updates);
@@ -93,24 +93,24 @@ export async function PATCH(request: Request, { params }: Params) {
     },
   });
 
-  const updates = orgUsers
-    .map((row) => {
-      const current = parseProfessionalRoles(row.user.professionalRole ?? "");
-      let changed = false;
-      const next = current.map((r) => {
-        if (r.toLowerCase() === oldRole) {
-          changed = true;
-          return newRole;
-        }
-        return r;
-      });
-      if (!changed) return null;
-      return prisma.user.update({
+  const updates = orgUsers.flatMap((row) => {
+    const current = parseProfessionalRoles(row.user.professionalRole ?? "");
+    let changed = false;
+    const next = current.map((r) => {
+      if (r.toLowerCase() === oldRole) {
+        changed = true;
+        return newRole;
+      }
+      return r;
+    });
+    if (!changed) return [];
+    return [
+      prisma.user.update({
         where: { id: row.userId },
         data: { professionalRole: serializeProfessionalRoles(next) },
-      });
-    })
-    .filter(Boolean);
+      }),
+    ];
+  });
 
   if (updates.length) {
     await prisma.$transaction(updates);
