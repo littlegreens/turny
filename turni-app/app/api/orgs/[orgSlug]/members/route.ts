@@ -4,7 +4,7 @@ import bcrypt from "bcrypt";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { resolveCanonicalProfessionalRole } from "@/lib/org-professional-roles";
-import { getPrimaryRole, hasAnyRole, normalizeRoles } from "@/lib/org-roles";
+import { getPrimaryRole, hasAnyRole, normalizeRoles, type OrgRoleValue } from "@/lib/org-roles";
 import { prisma } from "@/lib/prisma";
 
 const createMemberSchema = z.object({
@@ -75,7 +75,9 @@ export async function POST(request: Request, { params }: Params) {
   const safeRoles = isAdminLike
     ? normalizedRoles.filter((role) => role !== "OWNER")
     : normalizedRoles.filter((role) => role === "MANAGER" || role === "WORKER");
-  const finalRoles = safeRoles.length ? safeRoles : ["WORKER"];
+  const finalRoles: OrgRoleValue[] = normalizeRoles(
+    safeRoles.length > 0 ? safeRoles : (["WORKER"] as OrgRoleValue[]),
+  );
   const primaryRole = getPrimaryRole(finalRoles);
   const normalizedEmail = parsed.data.email.toLowerCase().trim();
   const professionalRoleResolved = await resolveCanonicalProfessionalRole(myMembership.orgId, parsed.data.professionalRole || "");
