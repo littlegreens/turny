@@ -67,9 +67,9 @@ export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, m
       .map((r) => ({
         id: String(r.id || crypto.randomUUID()),
         name: String(r.name || "Regola"),
-        kind: r.kind === "NEVER_WITH" ? "NEVER_WITH" : ("ALWAYS_WITH" as const),
+        kind: r.kind === "NEVER_WITH" ? ("NEVER_WITH" as const) : ("ALWAYS_WITH" as const),
         // Default SOFT: retrocompatibilità — le regole vecchie erano sempre soft (con slack).
-        weight: r.weight === "HARD" ? "HARD" : ("SOFT" as const),
+        weight: r.weight === "HARD" ? ("HARD" as const) : ("SOFT" as const),
         ifSelectors: Array.isArray(r.ifSelectors) ? r.ifSelectors.map(String).filter(Boolean) : [],
         thenSelectors: Array.isArray(r.thenSelectors) ? r.thenSelectors.map(String).filter(Boolean) : [],
         whenDow: r.whenDow == null ? null : Number(r.whenDow),

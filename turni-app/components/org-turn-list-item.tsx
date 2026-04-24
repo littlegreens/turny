@@ -35,11 +35,16 @@ const MONTH_OPTIONS = Array.from({ length: 12 }, (_, idx) => {
   return { value, label: monthName(value) };
 });
 
-function periodFromLog(schedule: Props["schedule"]) {
+type PeriodFromLog =
+  | { type: "WEEKLY" | "CUSTOM"; startDate: string; endDate: string; turnName: string }
+  | { type: "MONTHLY"; year: number; month: number; turnName: string };
+
+function periodFromLog(schedule: Props["schedule"]): PeriodFromLog {
   const meta = (schedule.generationLog ?? {}) as { periodType?: string; startDate?: string; endDate?: string; turnName?: string };
-  if (meta.periodType === "WEEKLY" || meta.periodType === "CUSTOM") {
+  const pt = meta.periodType;
+  if (pt === "WEEKLY" || pt === "CUSTOM") {
     return {
-      type: meta.periodType,
+      type: pt,
       startDate: meta.startDate ?? "",
       endDate: meta.endDate ?? "",
       turnName: meta.turnName?.trim() ?? "",
