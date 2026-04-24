@@ -27,7 +27,7 @@ type AssignedCalendar = {
   calendarMemberId: string;
   shiftTypes: { id: string; name: string }[];
   initialAvoidShiftTypeIds: string[];
-  initialTargetShiftsWeek: number | null;
+  initialTargetShiftsMonth: number | null;
   initialTargetHoursMonth: number | null;
   initialTargetNightsMonth: number | null;
   initialTargetSaturdaysMonth: number | null;
