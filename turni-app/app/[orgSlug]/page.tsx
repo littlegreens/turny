@@ -2,7 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
 import { AppBreadcrumbs } from "@/components/app-breadcrumbs";
 import { authOptions } from "@/lib/auth";
-import { hasAnyRole, normalizeRoles } from "@/lib/org-roles";
+import { FALLBACK_ORG_ADMIN_ROLES, hasAnyRole, normalizeRoles } from "@/lib/org-roles";
 import { prisma } from "@/lib/prisma";
 import { isSuperAdminEmail } from "@/lib/super-admin";
 
@@ -35,7 +35,7 @@ export default async function OrgDashboardPage({ params }: Props) {
   const org = membership?.org ?? (await prisma.organization.findUnique({ where: { slug: orgSlug } }));
   if (!org) notFound();
 
-  const effectiveRoles = membership ? normalizeRoles([membership.role, ...membership.roles]) : (["OWNER", "ADMIN"] as const);
+  const effectiveRoles = membership ? normalizeRoles([membership.role, ...membership.roles]) : FALLBACK_ORG_ADMIN_ROLES;
   const isWorkerOnly = !hasAnyRole(effectiveRoles, ["OWNER", "ADMIN", "MANAGER"]);
   if (isWorkerOnly) {
     redirect(`/${org.slug}/turni`);

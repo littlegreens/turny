@@ -4,7 +4,7 @@ import { getServerSession } from "next-auth";
 import { AppHeader } from "@/components/app-header";
 import { OrgSidebar } from "@/components/org-sidebar";
 import { authOptions } from "@/lib/auth";
-import { hasAnyRole, normalizeRoles } from "@/lib/org-roles";
+import { FALLBACK_ORG_ADMIN_ROLES, hasAnyRole, normalizeRoles } from "@/lib/org-roles";
 import { prisma } from "@/lib/prisma";
 import { isSuperAdminEmail } from "@/lib/super-admin";
 
@@ -31,7 +31,7 @@ export default async function OrgLayout({ children, params }: Props) {
   }
   const org = membership?.org ?? (await prisma.organization.findUnique({ where: { slug: orgSlug } }));
   if (!org) notFound();
-  const roles = membership ? normalizeRoles([membership.role, ...membership.roles]) : ["OWNER", "ADMIN"];
+  const roles = membership ? normalizeRoles([membership.role, ...membership.roles]) : FALLBACK_ORG_ADMIN_ROLES;
   const isWorkerOnly = !hasAnyRole(roles, ["OWNER", "ADMIN", "MANAGER"]);
   const displayName = session.user.name || session.user.email?.split("@")[0] || null;
 

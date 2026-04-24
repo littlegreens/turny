@@ -8,7 +8,7 @@ import { CalendarCoRulesPanelV2 } from "@/components/calendar-co-rules-panel-v2"
 import { authOptions } from "@/lib/auth";
 import { parseProfessionalRoles } from "@/lib/professional-roles";
 import { resolveMemberRowColor } from "@/lib/member-row-color";
-import { hasAnyRole, normalizeRoles, type OrgRoleValue } from "@/lib/org-roles";
+import { FALLBACK_ORG_ADMIN_ROLES, hasAnyRole, normalizeRoles, type OrgRoleValue } from "@/lib/org-roles";
 import { fetchOrgMemberDisplayColors } from "@/lib/org-member-display-colors";
 import { prisma } from "@/lib/prisma";
 import { isSuperAdminEmail } from "@/lib/super-admin";
@@ -46,7 +46,7 @@ export default async function CalendarDetailPage({ params }: Props) {
   }
   const effectiveRoles: OrgRoleValue[] = membership
     ? normalizeRoles([membership.role, ...membership.roles])
-    : (["OWNER", "ADMIN"] satisfies OrgRoleValue[]);
+    : FALLBACK_ORG_ADMIN_ROLES;
   if (!hasAnyRole(effectiveRoles, ["OWNER", "ADMIN", "MANAGER"])) {
     redirect(`/${orgSlug}/turni`);
   }

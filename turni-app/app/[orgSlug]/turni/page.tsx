@@ -4,7 +4,7 @@ import { AppBreadcrumbs } from "@/components/app-breadcrumbs";
 import { OrgTurnsBoard } from "@/components/org-turns-board";
 import { WorkerTurnsView } from "@/components/worker-turns-view";
 import { authOptions } from "@/lib/auth";
-import { hasAnyRole, normalizeRoles } from "@/lib/org-roles";
+import { FALLBACK_ORG_ADMIN_ROLES, hasAnyRole, normalizeRoles } from "@/lib/org-roles";
 import { fetchOrgMemberDisplayColors } from "@/lib/org-member-display-colors";
 import { prisma } from "@/lib/prisma";
 import { resolveMemberRowColor } from "@/lib/member-row-color";
@@ -30,7 +30,7 @@ export default async function OrgTurnsPage({ params, searchParams }: Props) {
   const org = membership?.org ?? (await prisma.organization.findUnique({ where: { slug: orgSlug } }));
   if (!org) notFound();
 
-  const roles = membership ? normalizeRoles([membership.role, ...membership.roles]) : ["OWNER", "ADMIN"];
+  const roles = membership ? normalizeRoles([membership.role, ...membership.roles]) : FALLBACK_ORG_ADMIN_ROLES;
   const isWorkerOnly = !hasAnyRole(roles, ["OWNER", "ADMIN", "MANAGER"]);
 
   if (isWorkerOnly) {

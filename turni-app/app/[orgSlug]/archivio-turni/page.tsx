@@ -4,7 +4,7 @@ import { getServerSession } from "next-auth";
 import { AppBreadcrumbs } from "@/components/app-breadcrumbs";
 import { ScheduleRipristinaButton } from "@/components/schedule-ripristina-button";
 import { authOptions } from "@/lib/auth";
-import { hasAnyRole, normalizeRoles } from "@/lib/org-roles";
+import { FALLBACK_ORG_ADMIN_ROLES, hasAnyRole, normalizeRoles, type OrgRoleValue } from "@/lib/org-roles";
 import { prisma } from "@/lib/prisma";
 import { isSuperAdminEmail } from "@/lib/super-admin";
 
@@ -41,7 +41,9 @@ export default async function OrgTurnsArchivePage({ params }: Props) {
   const org = membership?.org ?? (await prisma.organization.findUnique({ where: { slug: orgSlug } }));
   if (!org) notFound();
 
-  const roles = membership ? normalizeRoles([membership.role, ...membership.roles]) : ["OWNER", "ADMIN"];
+  const roles: OrgRoleValue[] = membership
+    ? normalizeRoles([membership.role, ...membership.roles])
+    : FALLBACK_ORG_ADMIN_ROLES;
   if (!hasAnyRole(roles, ["OWNER", "ADMIN", "MANAGER"])) {
     redirect(`/${org.slug}/turni`);
   }

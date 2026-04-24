@@ -4,7 +4,7 @@ import { getServerSession } from "next-auth";
 import { AppBreadcrumbs } from "@/components/app-breadcrumbs";
 import { OrgMemberItem } from "@/components/org-member-item";
 import { authOptions } from "@/lib/auth";
-import { hasAnyRole, normalizeRoles } from "@/lib/org-roles";
+import { FALLBACK_ORG_ADMIN_ROLES, hasAnyRole, normalizeRoles } from "@/lib/org-roles";
 import { fetchOrgMemberDisplayColors } from "@/lib/org-member-display-colors";
 import { distinctProfessionalRolesFromMembers } from "@/lib/org-professional-roles";
 import { prisma } from "@/lib/prisma";
@@ -29,7 +29,7 @@ export default async function MemberDetailPage({ params }: Props) {
   const orgId = membership?.orgId ?? (await prisma.organization.findUnique({ where: { slug: orgSlug }, select: { id: true } }))?.id;
   if (!orgId) notFound();
 
-  const effectiveRoles = membership ? normalizeRoles([membership.role, ...membership.roles]) : ["OWNER", "ADMIN"];
+  const effectiveRoles = membership ? normalizeRoles([membership.role, ...membership.roles]) : FALLBACK_ORG_ADMIN_ROLES;
   if (!hasAnyRole(effectiveRoles, ["OWNER", "ADMIN", "MANAGER"])) {
     redirect(`/${orgSlug}/turni`);
   }

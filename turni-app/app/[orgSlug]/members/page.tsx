@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { AppBreadcrumbs } from "@/components/app-breadcrumbs";
 import { OrgMembersBoard } from "@/components/org-members-board";
 import { authOptions } from "@/lib/auth";
-import { hasAnyRole, normalizeRoles } from "@/lib/org-roles";
+import { FALLBACK_ORG_ADMIN_ROLES, hasAnyRole, normalizeRoles } from "@/lib/org-roles";
 import { fetchOrgMemberDisplayColors } from "@/lib/org-member-display-colors";
 import { distinctProfessionalRolesFromMembers } from "@/lib/org-professional-roles";
 import { prisma } from "@/lib/prisma";
@@ -28,7 +28,7 @@ export default async function OrgMembersPage({ params }: Props) {
   const orgId = membership?.orgId ?? (await prisma.organization.findUnique({ where: { slug: orgSlug }, select: { id: true } }))?.id;
   if (!orgId) notFound();
 
-  const effectiveRolesEarly = membership ? normalizeRoles([membership.role, ...membership.roles]) : ["OWNER", "ADMIN"];
+  const effectiveRolesEarly = membership ? normalizeRoles([membership.role, ...membership.roles]) : FALLBACK_ORG_ADMIN_ROLES;
   const isWorkerOnly = !hasAnyRole(effectiveRolesEarly, ["OWNER", "ADMIN", "MANAGER"]);
 
   if (isWorkerOnly) {
@@ -182,7 +182,7 @@ export default async function OrgMembersPage({ params }: Props) {
     return acc;
   }, {});
 
-  const effectiveRoles = membership ? normalizeRoles([membership.role, ...membership.roles]) : ["OWNER", "ADMIN"];
+  const effectiveRoles = membership ? normalizeRoles([membership.role, ...membership.roles]) : FALLBACK_ORG_ADMIN_ROLES;
   const canManage = effectiveRoles.some((r) => ["OWNER", "ADMIN", "MANAGER"].includes(r));
   const canEditRole = effectiveRoles.some((r) => ["OWNER", "ADMIN", "MANAGER"].includes(r));
   const canAssignAdmin = effectiveRoles.some((r) => ["OWNER", "ADMIN"].includes(r));
