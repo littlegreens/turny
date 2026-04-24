@@ -62,7 +62,19 @@ export default async function ScheduleGridPage({ params, searchParams }: Props) 
           where: {
             OR: [
               { type: { in: ["UNAVAILABLE_WEEKDAY", "MAX_SHIFTS_WEEK", "UNAVAILABLE_SHIFT"] } },
-              { type: "CUSTOM", note: { in: ["MEMBER_COLOR", "TARGET_SHIFTS_MONTH", "TARGET_NIGHTS_MONTH", "TARGET_SATURDAYS_MONTH", "TARGET_SUNDAYS_MONTH"] } },
+              {
+                type: "CUSTOM",
+                note: {
+                  in: [
+                    "MEMBER_COLOR",
+                    "VACATION_DAYS_PERIOD",
+                    "TARGET_SHIFTS_MONTH",
+                    "TARGET_NIGHTS_MONTH",
+                    "TARGET_SATURDAYS_MONTH",
+                    "TARGET_SUNDAYS_MONTH",
+                  ],
+                },
+              },
             ],
           },
           select: { type: true, value: true, note: true },
@@ -211,6 +223,9 @@ export default async function ScheduleGridPage({ params, searchParams }: Props) 
           const cfgNights = m.constraints.find((c) => c.type === "CUSTOM" && c.note === "TARGET_NIGHTS_MONTH");
           const cfgSats = m.constraints.find((c) => c.type === "CUSTOM" && c.note === "TARGET_SATURDAYS_MONTH");
           const cfgSuns = m.constraints.find((c) => c.type === "CUSTOM" && c.note === "TARGET_SUNDAYS_MONTH");
+          const cfgVac = m.constraints.find((c) => c.type === "CUSTOM" && c.note === "VACATION_DAYS_PERIOD");
+          const vacRaw = (cfgVac?.value as { days?: number } | undefined)?.days;
+          const vacationDays = typeof vacRaw === "number" && vacRaw >= 0 ? Math.floor(vacRaw) : 0;
           return {
             id: m.id,
             userId: m.userId,
@@ -221,6 +236,7 @@ export default async function ScheduleGridPage({ params, searchParams }: Props) 
               typeof (cfgShifts?.value as { shifts?: number } | undefined)?.shifts === "number"
                 ? (cfgShifts!.value as { shifts: number }).shifts
                 : (m.contractShiftsMonth ?? null),
+            vacationDays,
             configMaxNights:
               typeof (cfgNights?.value as { nights?: number } | undefined)?.nights === "number"
                 ? (cfgNights!.value as { nights: number }).nights

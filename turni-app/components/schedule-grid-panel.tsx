@@ -45,6 +45,8 @@ type MemberOpt = {
   professionalRole?: string;
   contractShiftsWeek: number | null;
   contractShiftsMonth: number | null;
+  /** Giorni ferie nel periodo turno: riducono il tetto `contractShiftsMonth`. */
+  vacationDays: number;
   configMaxNights: number | null;
   configMaxSaturdays: number | null;
   configMaxSundays: number | null;
@@ -181,15 +183,23 @@ function formatDateIt(isoDate: string) {
   return new Intl.DateTimeFormat("it-IT").format(d);
 }
 
+function effectiveMaxShiftsMonthMember(m: MemberOpt | undefined, vacationOverride?: number): number | null {
+  if (!m || m.contractShiftsMonth == null) return null;
+  const vd = vacationOverride !== undefined ? vacationOverride : (m.vacationDays ?? 0);
+  return Math.max(0, m.contractShiftsMonth - vd);
+}
+
 function memberShiftTargetsLine(m: MemberOpt | undefined): string {
   if (!m) return "nessuno";
   const parts: string[] = [];
-  if (m.contractShiftsMonth != null) parts.push(`fino a ${m.contractShiftsMonth} turni nel periodo`);
-  if (m.contractShiftsWeek != null) parts.push(`fino a ${m.contractShiftsWeek} turni nella settimana`);
+  const eff = effectiveMaxShiftsMonthMember(m);
+  if (eff != null) parts.push(`Max turni: ${eff}`);
+  if (m.contractShiftsWeek != null) parts.push(`Max turni (settimana): ${m.contractShiftsWeek}`);
   return parts.length ? parts.join(" · ") : "nessuno";
 }
 
 function serializeMemberPopupState(
+  vacationDays: number,
   useOrgColor: boolean,
   color: string,
   dayOff: Record<string, boolean>,
@@ -199,7 +209,7 @@ function serializeMemberPopupState(
   dateStrs: string[],
   sts: ShiftTypeCol[],
 ) {
-  const parts: string[] = [useOrgColor ? "ORG1" : `HEX:${color}`];
+  const parts: string[] = [`vac:${vacationDays}`, useOrgColor ? "ORG1" : `HEX:${color}`];
   for (const d of dateStrs) parts.push(`d:${d}:${dayOff[d] ? 1 : 0}:${dayMust[d] ? 1 : 0}`);
   for (const d of dateStrs)
     for (const st of sts) {
@@ -319,7 +329,7 @@ export function ScheduleGridPanel({
   const [memberDiscardConfirmOpen, setMemberDiscardConfirmOpen] = useState(false);
   const [memberResetConfirmOpen, setMemberResetConfirmOpen] = useState(false);
   const [memberUseOrgColor, setMemberUseOrgColor] = useState(false);
-
+  const [memberVacationDaysDraft, setMemberVacationDaysDraft] = useState(0);
 
   useEffect(() => {
     setSolverRelaxationAlerts(Array.isArray(initialSolverAlerts) ? initialSolverAlerts : []);
@@ -740,13 +750,13 @@ export function ScheduleGridPanel({
     }
 
     for (const mem of members) {
-      if (mem.contractShiftsMonth == null) continue;
-      const cap = mem.contractShiftsMonth;
+      const cap = effectiveMaxShiftsMonthMember(mem);
+      if (cap == null) continue;
       const cnt = assignments.filter((a) => a.memberId === mem.id).length;
       if (cnt > cap) {
         rows.push({
           level: "ERROR",
-          text: `${mem.label}: ${cnt} turni nel periodo, superiore al tetto contrattuale mensile (${cap}).`,
+          text: `${mem.label}: ${cnt} turni nel periodo, superiore al tetto massimo (${cap}).`,
           memberId: mem.id,
         });
       }
@@ -853,6 +863,7 @@ export function ScheduleGridPanel({
   const memberPopupDirty = useMemo(() => {
     if (!memberPopupOpen || !selectedMemberId) return false;
     const cur = serializeMemberPopupState(
+      memberVacationDaysDraft,
       memberUseOrgColor,
       memberColorDraft,
       memberDayOff,
@@ -866,6 +877,7 @@ export function ScheduleGridPanel({
   }, [
     memberPopupOpen,
     selectedMemberId,
+    memberVacationDaysDraft,
     memberUseOrgColor,
     memberColorDraft,
     memberDayOff,
@@ -1431,7 +1443,9 @@ export function ScheduleGridPanel({
         baseShiftOff[key] = hasBaseShift;
       }
     }
+    const vacInit = member?.vacationDays ?? 0;
     memberPopupBaselineRef.current = serializeMemberPopupState(
+      vacInit,
       !hasCalendarOverride,
       colorInit,
       dayOff,
@@ -1441,6 +1455,7 @@ export function ScheduleGridPanel({
       dates,
       shiftTypes,
     );
+    setMemberVacationDaysDraft(vacInit);
     setMemberColorDraft(colorInit);
     setMemberDayOff(dayOff);
     setMemberShiftOff(shiftOff);
@@ -1590,7 +1605,10 @@ export function ScheduleGridPanel({
     const colorRes = await fetch(`/api/calendar-members/${selectedMemberId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ color: memberUseOrgColor ? null : memberColorDraft }),
+      body: JSON.stringify({
+        color: memberUseOrgColor ? null : memberColorDraft,
+        vacationDays: memberVacationDaysDraft,
+      }),
     });
     const colorPayload = (await colorRes.json()) as { error?: string };
     if (!colorRes.ok) {
@@ -1919,9 +1937,14 @@ export function ScheduleGridPanel({
             disabled={configGridZoomIdx <= 0}
             onClick={() => setConfigGridZoomIdx((i) => Math.max(0, i - 1))}
           >
-            <span className="material-symbols-outlined" aria-hidden="true">
-              zoom_out
-            </span>
+            <Image
+              src="/zoom_out_24dp_1F1F1F_FILL0_wght400_GRAD0_opsz24.svg"
+              alt=""
+              width={18}
+              height={18}
+              aria-hidden="true"
+              style={{ filter: "invert(40%) sepia(82%) saturate(700%) hue-rotate(96deg) brightness(92%) contrast(92%)" }}
+            />
           </button>
           <button
             type="button"
@@ -1931,9 +1954,14 @@ export function ScheduleGridPanel({
             disabled={configGridZoomIdx >= CONFIG_GRID_ZOOM_LEVELS.length - 1}
             onClick={() => setConfigGridZoomIdx((i) => Math.min(CONFIG_GRID_ZOOM_LEVELS.length - 1, i + 1))}
           >
-            <span className="material-symbols-outlined" aria-hidden="true">
-              zoom_in
-            </span>
+            <Image
+              src="/zoom_in_24dp_1F1F1F_FILL0_wght400_GRAD0_opsz24.svg"
+              alt=""
+              width={18}
+              height={18}
+              aria-hidden="true"
+              style={{ filter: "invert(40%) sepia(82%) saturate(700%) hue-rotate(96deg) brightness(92%) contrast(92%)" }}
+            />
           </button>
           {(canManageSchedule || canEdit) && (
             <button className="btn btn-sm btn-outline-secondary" onClick={() => setPreviewOpen(true)} disabled={loadingKey !== null}>
@@ -3008,8 +3036,10 @@ export function ScheduleGridPanel({
                   {(() => {
                     const mem = memberById.get(selectedMemberId);
                     const cfgParts: { label: string; value: string }[] = [];
-                    if (mem?.contractShiftsMonth != null)
-                      cfgParts.push({ label: "Max turni", value: `fino a ${mem.contractShiftsMonth} nel periodo` });
+                    if (mem?.contractShiftsMonth != null) {
+                      const eff = effectiveMaxShiftsMonthMember(mem, memberVacationDaysDraft);
+                      if (eff != null) cfgParts.push({ label: "Max turni", value: String(eff) });
+                    }
                     if (mem?.configMaxNights != null)
                       cfgParts.push({ label: "Max notti", value: String(mem.configMaxNights) });
                     if (mem?.configMaxSaturdays != null)
@@ -3041,18 +3071,26 @@ export function ScheduleGridPanel({
                         label="Colore"
                         disabled={loadingKey !== null}
                       />
+                      <label className="form-label small mt-3 mb-1">Giorni ferie (nel periodo)</label>
+                      <input
+                        type="number"
+                        className="form-control form-control-sm"
+                        min={0}
+                        max={366}
+                        step={1}
+                        value={memberVacationDaysDraft}
+                        onChange={(e) => {
+                          const n = Number(e.target.value);
+                          setMemberVacationDaysDraft(Number.isFinite(n) ? Math.max(0, Math.min(366, Math.floor(n))) : 0);
+                        }}
+                        disabled={loadingKey !== null}
+                      />
                     </div>
                     <div className="col-12">
-                      <p className="small text-secondary mb-2">
-                        Verde contorno = disponibile
+                      <p className="text-secondary mb-2 lh-sm" style={{ fontSize: "0.72rem" }}>
+                        Verde contorno = disponibile / Verde pieno = obbligatorio
                         <br />
-                        Verde pieno = obbligatorio
-                        <br />
-                        Rosso pieno = indisponibile
-                        <br />
-                        Bordo rosso = disponibile nonostante un vincolo generico
-                        <br />
-                        Bordo rosso fondo verde = obbligo nonostante vincolo generico
+                        {`Rosso pieno = indisponibile / Bordo rosso = disponibile nonostante un vincolo generico / Bordo rosso fondo verde = obbligo nonostante vincolo generico`}
                         <br />
                         Grigio = turno non previsto per quel giorno (non cliccabile)
                       </p>
@@ -3236,9 +3274,14 @@ export function ScheduleGridPanel({
                           disabled={previewZoomIdx <= 0}
                           onClick={() => setPreviewZoomIdx((i) => Math.max(0, i - 1))}
                         >
-                          <span className="material-symbols-outlined" aria-hidden="true">
-                            zoom_out
-                          </span>
+                          <Image
+                            src="/zoom_out_24dp_1F1F1F_FILL0_wght400_GRAD0_opsz24.svg"
+                            alt=""
+                            width={18}
+                            height={18}
+                            aria-hidden="true"
+                            style={{ filter: "invert(40%) sepia(82%) saturate(700%) hue-rotate(96deg) brightness(92%) contrast(92%)" }}
+                          />
                         </button>
                         <button
                           type="button"
@@ -3248,9 +3291,14 @@ export function ScheduleGridPanel({
                           disabled={previewZoomIdx >= SCHEDULE_PREVIEW_ZOOM_LEVELS.length - 1}
                           onClick={() => setPreviewZoomIdx((i) => Math.min(SCHEDULE_PREVIEW_ZOOM_LEVELS.length - 1, i + 1))}
                         >
-                          <span className="material-symbols-outlined" aria-hidden="true">
-                            zoom_in
-                          </span>
+                          <Image
+                            src="/zoom_in_24dp_1F1F1F_FILL0_wght400_GRAD0_opsz24.svg"
+                            alt=""
+                            width={18}
+                            height={18}
+                            aria-hidden="true"
+                            style={{ filter: "invert(40%) sepia(82%) saturate(700%) hue-rotate(96deg) brightness(92%) contrast(92%)" }}
+                          />
                         </button>
                       </>
                     ) : null}

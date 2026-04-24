@@ -119,6 +119,50 @@ export function datesInMonth(year: number, month: number): string[] {
   return Array.from({ length: dim }, (_, i) => `${year}-${pad(month)}-${pad(i + 1)}`);
 }
 
+function vacationDaysFromMemberConstraints(
+  memberId: string,
+  memberConstraints: Array<{ memberId: string; type: string; note?: string | null; value: unknown }>,
+): number {
+  for (const c of memberConstraints) {
+    if (c.memberId !== memberId || c.type !== "CUSTOM") continue;
+    if (String(c.note ?? "").trim() !== "VACATION_DAYS_PERIOD") continue;
+    const val = c.value as { days?: number };
+    if (typeof val.days === "number" && val.days >= 0) return Math.floor(val.days);
+  }
+  return 0;
+}
+
+/**
+ * Tetto turni periodo dopo TARGET / MAX_SHIFTS_MONTH e sottrazione ferie (allineato al payload solver).
+ */
+export function effectiveMaxShiftsMonthFromConstraints(
+  memberId: string,
+  contractShiftsMonth: number | null,
+  memberConstraints: Array<{ memberId: string; type: string; weight: string; value: unknown; note?: string | null }>,
+): number | null {
+  let maxShiftsMonth: number | null = contractShiftsMonth;
+  for (const c of memberConstraints) {
+    if (c.memberId !== memberId) continue;
+    if (c.type === "MAX_SHIFTS_MONTH" && c.weight === "HARD") {
+      const v = c.value as { max?: number; count?: number };
+      const max = typeof v.max === "number" ? v.max : typeof v.count === "number" ? v.count : null;
+      if (max != null) maxShiftsMonth = max;
+    } else if (c.type === "CUSTOM") {
+      const note = c.note ?? undefined;
+      const val = c.value as { shifts?: number; days?: number };
+      if (
+        (note === "TARGET_SHIFTS_MONTH" || note === "TARGET_SHIFTS_WEEK") &&
+        typeof val.shifts === "number"
+      ) {
+        maxShiftsMonth = val.shifts;
+      }
+    }
+  }
+  const vd = vacationDaysFromMemberConstraints(memberId, memberConstraints);
+  if (maxShiftsMonth == null) return null;
+  return Math.max(0, maxShiftsMonth - vd);
+}
+
 export function datesInRange(startDate: string, endDate: string): string[] {
   const out: string[] = [];
   const d = new Date(`${startDate}T00:00:00.000Z`);
@@ -246,7 +290,7 @@ export function buildSchedulerProblem(params: {
     minRestHoursBetweenShifts: number;
     contractShiftsMonth: number | null;
   }>;
-  monthlyConstraints: Array<{ memberId: string; type: string; weight: string; value: unknown }>;
+  monthlyConstraints: Array<{ memberId: string; type: string; weight: string; value: unknown; note?: string | null }>;
   memberConstraints: Array<{ memberId: string; type: string; weight: string; value: unknown; note?: string | null }>;
   fixedAssignments: SchedulerFixedAssignment[];
   /** Da passare a runtime (es. Date.now()) per variare il piano tra due generazioni. */
@@ -435,6 +479,9 @@ export function buildSchedulerProblem(params: {
         unavailableDates.add(d);
       }
     }
+
+    const vd = vacationDaysFromMemberConstraints(m.id, params.memberConstraints);
+    if (maxShiftsMonth != null && vd > 0) maxShiftsMonth = Math.max(0, maxShiftsMonth - vd);
 
     for (const c of params.monthlyConstraints) {
       if (c.memberId !== m.id) continue;

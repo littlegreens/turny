@@ -9,6 +9,7 @@ import {
   buildSchedulerProblem,
   datesInMonth,
   datesInRange,
+  effectiveMaxShiftsMonthFromConstraints,
   type SchedulerFixedAssignment,
 } from "@/lib/scheduler-problem";
 
@@ -48,6 +49,7 @@ export async function POST(_: Request, { params }: Params) {
     "TARGET_NIGHTS_MONTH",
     "TARGET_SATURDAYS_MONTH",
     "TARGET_SUNDAYS_MONTH",
+    "VACATION_DAYS_PERIOD",
   ] as const;
 
   const [calendar, shiftTypes, members, existingAssignments, monthlyConstraintsRaw, memberConstraints] = await Promise.all([
@@ -197,7 +199,7 @@ export async function POST(_: Request, { params }: Params) {
             members: members.map((m) => ({
               id: m.id,
               isJolly: m.isJolly,
-              contractShiftsMonth: m.contractShiftsMonth,
+              contractShiftsMonth: effectiveMaxShiftsMonthFromConstraints(m.id, m.contractShiftsMonth, memberConstraints),
               user: m.user,
             })),
             fixedAssignments: fixedAssignments,

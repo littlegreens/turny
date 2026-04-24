@@ -10,10 +10,14 @@ type Params = {
   params: Promise<{ calendarMemberId: string }>;
 };
 
-const updateColorSchema = z.object({
-  /** Hex colore calendario, oppure `null` per rimuovere l’override e usare impostazioni membro org */
-  color: z.union([z.string().regex(/^#[0-9A-Fa-f]{6}$/), z.null()]),
-});
+const patchBodySchema = z
+  .object({
+    /** Hex colore calendario, oppure `null` per rimuovere l’override e usare impostazioni membro org */
+    color: z.union([z.string().regex(/^#[0-9A-Fa-f]{6}$/), z.null()]).optional(),
+    /** Giorni di ferie nel periodo turno: riducono il tetto massimo turni (vincolo CUSTOM VACATION_DAYS_PERIOD). */
+    vacationDays: z.number().int().min(0).max(366).optional(),
+  })
+  .refine((d) => d.color !== undefined || d.vacationDays !== undefined, { message: "Nessun campo da aggiornare" });
 
 export async function DELETE(_: Request, { params }: Params) {
   const session = await getServerSession(authOptions);
@@ -56,8 +60,10 @@ export async function PATCH(request: Request, { params }: Params) {
   });
   if (!row) return NextResponse.json({ error: "Associazione non trovata" }, { status: 404 });
 
-  const parsed = updateColorSchema.safeParse(await request.json());
-  if (!parsed.success) return NextResponse.json({ error: "Colore non valido" }, { status: 400 });
+  const parsed = patchBodySchema.safeParse(await request.json());
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Richiesta non valida" }, { status: 400 });
+  }
 
   const isSelf = row.userId === session.user.id;
   if (isSelf) {
@@ -68,7 +74,7 @@ export async function PATCH(request: Request, { params }: Params) {
       const roles = normalizeRoles([orgMember.role, ...orgMember.roles]);
       if (!hasAnyRole(roles, ["OWNER", "ADMIN", "MANAGER"])) {
         return NextResponse.json(
-          { error: "Solo i responsabili possono impostare il colore in calendario." },
+          { error: "Solo i responsabili possono modificare colore e ferie in calendario." },
           { status: 403 },
         );
       }
@@ -78,20 +84,41 @@ export async function PATCH(request: Request, { params }: Params) {
     if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status });
   }
 
-  await prisma.constraint.deleteMany({
-    where: { memberId: calendarMemberId, type: "CUSTOM", note: "MEMBER_COLOR" },
-  });
-  if (parsed.data.color !== null) {
-    await prisma.constraint.create({
-      data: {
-        memberId: calendarMemberId,
-        type: "CUSTOM",
-        weight: "SOFT",
-        value: { color: parsed.data.color },
-        note: "MEMBER_COLOR",
-        createdBy: session.user.id,
-      },
+  if (parsed.data.color !== undefined) {
+    await prisma.constraint.deleteMany({
+      where: { memberId: calendarMemberId, type: "CUSTOM", note: "MEMBER_COLOR" },
     });
+    if (parsed.data.color !== null) {
+      await prisma.constraint.create({
+        data: {
+          memberId: calendarMemberId,
+          type: "CUSTOM",
+          weight: "SOFT",
+          value: { color: parsed.data.color },
+          note: "MEMBER_COLOR",
+          createdBy: session.user.id,
+        },
+      });
+    }
   }
+
+  if (parsed.data.vacationDays !== undefined) {
+    await prisma.constraint.deleteMany({
+      where: { memberId: calendarMemberId, type: "CUSTOM", note: "VACATION_DAYS_PERIOD" },
+    });
+    if (parsed.data.vacationDays > 0) {
+      await prisma.constraint.create({
+        data: {
+          memberId: calendarMemberId,
+          type: "CUSTOM",
+          weight: "SOFT",
+          value: { days: parsed.data.vacationDays },
+          note: "VACATION_DAYS_PERIOD",
+          createdBy: session.user.id,
+        },
+      });
+    }
+  }
+
   return NextResponse.json({ ok: true });
 }
