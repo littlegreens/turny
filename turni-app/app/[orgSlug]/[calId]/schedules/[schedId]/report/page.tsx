@@ -5,7 +5,8 @@ import { AppBreadcrumbs } from "@/components/app-breadcrumbs";
 import { ScheduleReportActions } from "@/components/schedule-report-actions";
 import { ScheduleReportCsvButton } from "@/components/schedule-report-csv-button";
 import { authOptions } from "@/lib/auth";
-import { hasAnyRole, normalizeRoles } from "@/lib/org-roles";
+import { FALLBACK_ORG_ADMIN_ROLES, hasAnyRole, normalizeRoles } from "@/lib/org-roles";
+import { isSuperAdminEmail } from "@/lib/super-admin";
 import { parseHolidayOverrides } from "@/lib/holiday-overrides";
 import { buildScheduleReport } from "@/lib/schedule-report";
 import { shiftIsNight } from "@/lib/scheduler-problem";
@@ -33,8 +34,9 @@ export default async function ScheduleReportPage({ params }: Props) {
   const membership = await prisma.orgMember.findFirst({
     where: { userId: session.user.id, orgId: schedule.calendar.orgId },
   });
-  if (!membership) notFound();
-  const roles = normalizeRoles([membership.role, ...membership.roles]);
+  const superAdmin = isSuperAdminEmail(session.user.email ?? null);
+  if (!membership && !superAdmin) notFound();
+  const roles = membership ? normalizeRoles([membership.role, ...membership.roles]) : FALLBACK_ORG_ADMIN_ROLES;
   const isManagerOnly = hasAnyRole(roles, ["MANAGER"]) && !hasAnyRole(roles, ["OWNER", "ADMIN"]);
   if (isManagerOnly) {
     const assigned = await prisma.calendarMember.findUnique({

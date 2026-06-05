@@ -13,6 +13,7 @@ import { useAppToast } from "@/components/app-toast-provider";
 import type { InfeasibilityHints } from "@/lib/infeasibility-hints";
 import { isShiftActiveOnDate, type HolidayOverrideDraft } from "@/lib/holiday-overrides";
 import { ScheduleHolidayOverridesPanel } from "@/components/schedule-holiday-overrides-panel";
+import { ScheduleExcelExportButton } from "@/components/schedule-excel-export-button";
 import type { CoverageAlert, ExtraReportRow, MemberReportRow } from "@/lib/schedule-report";
 import { parseProfessionalRoles } from "@/lib/professional-roles";
 import {
@@ -261,7 +262,7 @@ export function ScheduleGridPanel({
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [cellAddOpen, setCellAddOpen] = useState<null | { date: string; shiftTypeId: string }>(null);
   const [guestNameDraft, setGuestNameDraft] = useState("");
-  const [guestColorDraft, setGuestColorDraft] = useState("#6b7280");
+  const [guestColorDraft, setGuestColorDraft] = useState("#FFFFFF");
   const [clearOpen, setClearOpen] = useState(false);
   const importFileRef = useRef<HTMLInputElement | null>(null);
   const [importModalOpen, setImportModalOpen] = useState(false);
@@ -1963,6 +1964,7 @@ export function ScheduleGridPanel({
               style={{ filter: "invert(40%) sepia(82%) saturate(700%) hue-rotate(96deg) brightness(92%) contrast(92%)" }}
             />
           </button>
+          {canManageSchedule ? <ScheduleExcelExportButton scheduleId={scheduleId} /> : null}
           {(canManageSchedule || canEdit) && (
             <button className="btn btn-sm btn-outline-secondary" onClick={() => setPreviewOpen(true)} disabled={loadingKey !== null}>
               Visualizza
@@ -2897,7 +2899,7 @@ export function ScheduleGridPanel({
                       </div>
                       <div className="col-12 col-sm-5">
                         <ColorPalettePicker
-                          value={guestColorDraft.match(/^#[0-9A-Fa-f]{6}$/) ? guestColorDraft : "#6b7280"}
+                          value={guestColorDraft.match(/^#[0-9A-Fa-f]{6}$/) ? guestColorDraft : "#FFFFFF"}
                           onChange={(hex) => setGuestColorDraft(hex)}
                           label="Colore"
                           disabled={loadingKey !== null}
@@ -2923,7 +2925,7 @@ export function ScheduleGridPanel({
                         cellAddOpen.date,
                         cellAddOpen.shiftTypeId,
                         guestNameDraft,
-                        guestColorDraft.match(/^#[0-9A-Fa-f]{6}$/) ? guestColorDraft : "#6b7280",
+                        guestColorDraft.match(/^#[0-9A-Fa-f]{6}$/) ? guestColorDraft : "#FFFFFF",
                       )
                     }
                     disabled={loadingKey !== null || !guestNameDraft.trim()}
