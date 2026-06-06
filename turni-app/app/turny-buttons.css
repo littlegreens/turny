@@ -1,0 +1,265 @@
+/**
+ * Bottoni Turny — caricato per ultimo.
+ *
+ * Bootstrap Italia disegna i bordi outline con box-shadow inset (border-width: 0).
+ * NON usare mai box-shadow: none sugli stati :hover/:focus/:active — il bordo sparisce.
+ */
+
+:root {
+  --turny-btn-ring-success: inset 0 0 0 1px var(--turny-success, #1f7a3f);
+  --turny-btn-ring-secondary: inset 0 0 0 1px #6c757d;
+  --turny-btn-ring-danger: inset 0 0 0 1px #dc3545;
+  --turny-tile-ring-neutral: inset 0 0 0 2px #6c757d;
+  --turny-tile-ring-success: inset 0 0 0 2px var(--turny-success, #1f7a3f);
+  --turny-tile-ring-danger: inset 0 0 0 2px #dc3545;
+  --turny-tile-ring-secondary: inset 0 0 0 2px #6c757d;
+  --turny-tile-ring-na: inset 0 0 0 2px #dee2e6;
+}
+
+/* ── Outline standard (1px) ── */
+.btn.btn-outline-success {
+  --bs-btn-color: var(--turny-success-text, #145329);
+  --bs-btn-bg: #fff;
+  --bs-btn-border-color: var(--turny-success, #1f7a3f);
+  --bs-btn-border-width: 1px;
+  --bs-btn-hover-color: var(--turny-success-text, #145329);
+  --bs-btn-hover-bg: #fff;
+  --bs-btn-hover-border-color: var(--turny-success, #1f7a3f);
+  --bs-btn-active-color: var(--turny-success-text, #145329);
+  --bs-btn-active-bg: #fff;
+  --bs-btn-active-border-color: var(--turny-success, #1f7a3f);
+  --bs-btn-active-shadow: none;
+  --bs-btn-focus-box-shadow: var(--turny-btn-ring-success);
+  --bs-btn-focus-shadow-rgb: 31, 122, 63;
+  border: 1px solid var(--turny-success, #1f7a3f) !important;
+  background-color: #fff !important;
+  color: var(--turny-success-text, #145329) !important;
+  box-shadow: var(--turny-btn-ring-success) !important;
+}
+
+.btn.btn-outline-secondary {
+  --bs-btn-color: #495057;
+  --bs-btn-bg: #fff;
+  --bs-btn-border-color: #6c757d;
+  --bs-btn-border-width: 1px;
+  --bs-btn-hover-color: #495057;
+  --bs-btn-hover-bg: #fff;
+  --bs-btn-hover-border-color: #6c757d;
+  --bs-btn-active-color: #495057;
+  --bs-btn-active-bg: #fff;
+  --bs-btn-active-border-color: #6c757d;
+  --bs-btn-active-shadow: none;
+  --bs-btn-focus-box-shadow: var(--turny-btn-ring-secondary);
+  border: 1px solid #6c757d !important;
+  background-color: #fff !important;
+  color: #495057 !important;
+  box-shadow: var(--turny-btn-ring-secondary) !important;
+}
+
+.btn.btn-outline-danger {
+  --bs-btn-color: #c82333;
+  --bs-btn-bg: #fff;
+  --bs-btn-border-color: #dc3545;
+  --bs-btn-border-width: 1px;
+  --bs-btn-hover-color: #c82333;
+  --bs-btn-hover-bg: #fff;
+  --bs-btn-hover-border-color: #dc3545;
+  --bs-btn-active-color: #c82333;
+  --bs-btn-active-bg: #fff;
+  --bs-btn-active-border-color: #dc3545;
+  --bs-btn-active-shadow: none;
+  --bs-btn-focus-box-shadow: var(--turny-btn-ring-danger);
+  border: 1px solid #dc3545 !important;
+  background-color: #fff !important;
+  color: #c82333 !important;
+  box-shadow: var(--turny-btn-ring-danger) !important;
+}
+
+.btn.btn-success {
+  --bs-btn-color: #fff;
+  --bs-btn-bg: var(--turny-success, #1f7a3f);
+  --bs-btn-border-color: var(--turny-success, #1f7a3f);
+  --bs-btn-border-width: 1px;
+  --bs-btn-hover-color: #fff;
+  --bs-btn-hover-bg: var(--turny-success, #1f7a3f);
+  --bs-btn-hover-border-color: var(--turny-success, #1f7a3f);
+  --bs-btn-active-color: #fff;
+  --bs-btn-active-bg: var(--turny-success, #1f7a3f);
+  --bs-btn-active-border-color: var(--turny-success, #1f7a3f);
+  --bs-btn-active-shadow: none;
+  --bs-btn-focus-box-shadow: var(--turny-btn-ring-success);
+  border: 1px solid var(--turny-success, #1f7a3f) !important;
+  background-color: var(--turny-success, #1f7a3f) !important;
+  color: #fff !important;
+  box-shadow: var(--turny-btn-ring-success) !important;
+}
+
+.btn.btn-danger:not(.schedule-member-popup-tile) {
+  --bs-btn-color: #fff;
+  --bs-btn-bg: #dc3545;
+  --bs-btn-border-color: #dc3545;
+  --bs-btn-border-width: 1px;
+  --bs-btn-hover-color: #fff;
+  --bs-btn-hover-bg: #bb2d3b;
+  --bs-btn-hover-border-color: #b02a37;
+  --bs-btn-active-color: #fff;
+  --bs-btn-active-bg: #b02a37;
+  --bs-btn-active-border-color: #a52834;
+  --bs-btn-active-shadow: none;
+  --bs-btn-focus-box-shadow: var(--turny-btn-ring-danger);
+  border: 1px solid #dc3545 !important;
+  background-color: #dc3545 !important;
+  color: #fff !important;
+  box-shadow: var(--turny-btn-ring-danger) !important;
+}
+
+.btn.btn-danger:not(.schedule-member-popup-tile):is(:hover, :focus, :focus-visible, :active, .active, .show),
+.btn.btn-danger:not(.schedule-member-popup-tile):first-child:active,
+:not(.btn-check) + .btn.btn-danger:not(.schedule-member-popup-tile):active,
+button.btn.btn-danger:not(.schedule-member-popup-tile):is(:hover, :focus, :focus-visible, :active) {
+  border: 1px solid #b02a37 !important;
+  background-color: #bb2d3b !important;
+  color: #fff !important;
+  outline: none !important;
+  box-shadow: var(--turny-btn-ring-danger) !important;
+}
+
+/* Tutti gli stati interattivi outline — bordo sempre visibile (click incluso) */
+.btn.btn-outline-success:is(:hover, :focus, :focus-visible, :active, .active, .show, :disabled, :disabled:hover, :disabled:active),
+.btn.btn-outline-success:first-child:active,
+:not(.btn-check) + .btn.btn-outline-success:active,
+.btn-check:checked + .btn.btn-outline-success,
+.btn-check:focus-visible + .btn.btn-outline-success,
+button.btn.btn-outline-success:is(:hover, :focus, :focus-visible, :active) {
+  border: 1px solid var(--turny-success, #1f7a3f) !important;
+  background-color: #fff !important;
+  color: var(--turny-success-text, #145329) !important;
+  outline: none !important;
+  box-shadow: var(--turny-btn-ring-success) !important;
+}
+
+.btn.btn-outline-secondary:is(:hover, :focus, :focus-visible, :active, .active, .show, :disabled, :disabled:hover, :disabled:active),
+.btn.btn-outline-secondary:first-child:active,
+:not(.btn-check) + .btn.btn-outline-secondary:active,
+button.btn.btn-outline-secondary:is(:hover, :focus, :focus-visible, :active) {
+  border: 1px solid #6c757d !important;
+  background-color: #fff !important;
+  color: #495057 !important;
+  outline: none !important;
+  box-shadow: var(--turny-btn-ring-secondary) !important;
+}
+
+.btn.btn-outline-danger:is(:hover, :focus, :focus-visible, :active, .active, .show, :disabled, :disabled:hover, :disabled:active),
+.btn.btn-outline-danger:first-child:active,
+:not(.btn-check) + .btn.btn-outline-danger:active,
+button.btn.btn-outline-danger:is(:hover, :focus, :focus-visible, :active) {
+  border: 1px solid #dc3545 !important;
+  background-color: #fff !important;
+  color: #c82333 !important;
+  outline: none !important;
+  box-shadow: var(--turny-btn-ring-danger) !important;
+}
+
+.btn.btn-success:not(.schedule-member-popup-tile):is(:hover, :focus, :focus-visible, :active, .active, .show),
+.btn.btn-success:not(.schedule-member-popup-tile):first-child:active,
+:not(.btn-check) + .btn.btn-success:not(.schedule-member-popup-tile):active,
+button.btn.btn-success:not(.schedule-member-popup-tile):is(:hover, :focus, :focus-visible, :active) {
+  border: 1px solid var(--turny-success, #1f7a3f) !important;
+  background-color: var(--turny-success, #1f7a3f) !important;
+  color: #fff !important;
+  outline: none !important;
+  box-shadow: var(--turny-btn-ring-success) !important;
+}
+
+.btn:focus,
+.btn:focus-visible,
+.btn:focus:not(:focus-visible),
+button.btn:focus,
+button.btn:focus-visible {
+  outline: none !important;
+}
+
+.btn.turny-icon-btn.btn-outline-success img {
+  filter: var(--turny-success-icon-filter);
+}
+
+.btn.turny-icon-btn.btn-outline-success .material-symbols-outlined {
+  color: var(--turny-success, #1f7a3f);
+}
+
+/* ── Tile griglia settimanale / scheda persona: solo bordo 2px (globals), niente box-shadow doppio ── */
+.schedule-member-popup-tile.btn,
+.schedule-member-popup-tile.btn:is(:hover, :focus, :focus-visible, :active, .active, .show, :first-child:active),
+:not(.btn-check) + .schedule-member-popup-tile.btn:active,
+button.schedule-member-popup-tile.btn:is(:hover, :focus, :focus-visible, :active) {
+  --bs-btn-border-width: 2px;
+  --bs-btn-active-shadow: none;
+  --bs-btn-focus-box-shadow: none;
+  box-sizing: border-box !important;
+  border-width: 2px !important;
+  border-style: solid !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.schedule-member-popup-tile.btn-danger:is(:hover, :focus, :focus-visible, :active, .active, :first-child:active) {
+  border-color: #dc3545 !important;
+  background-color: #dc3545 !important;
+  color: #fff !important;
+}
+
+.schedule-member-popup-tile.btn-success:is(:hover, :focus, :focus-visible, :active, .active, :first-child:active) {
+  border-color: var(--turny-success, #1f7a3f) !important;
+  background-color: var(--turny-success, #1f7a3f) !important;
+  color: #fff !important;
+}
+
+.schedule-member-popup-tile.btn-outline-success:is(:hover, :focus, :focus-visible, :active, .active, :first-child:active) {
+  border-color: var(--turny-success, #1f7a3f) !important;
+  background-color: #fff !important;
+  color: var(--turny-success-text, #145329) !important;
+}
+
+.schedule-member-popup-tile.btn-outline-danger:is(:hover, :focus, :focus-visible, :active, .active, :first-child:active) {
+  border-color: #dc3545 !important;
+  background-color: #fff !important;
+  color: #c82333 !important;
+}
+
+.schedule-member-popup-tile.btn-outline-secondary:is(:hover, :focus, :focus-visible, :active, .active, :first-child:active) {
+  border-color: #6c757d !important;
+  background-color: #fff !important;
+  color: #495057 !important;
+}
+
+.schedule-member-popup-tile.schedule-member-generic-bypass-btn.btn,
+.schedule-member-popup-tile.schedule-member-generic-bypass-btn.btn:is(:hover, :focus, :focus-visible, :active, .active, :first-child:active) {
+  border-color: #dc3545 !important;
+  background-color: #fff !important;
+  color: #c82333 !important;
+}
+
+.schedule-member-popup-tile.schedule-member-day-must-slot-btn.btn,
+.schedule-member-popup-tile.schedule-member-day-must-slot-btn.btn:is(:hover, :focus, :focus-visible, :active, .active, :first-child:active) {
+  border-color: #d4d9df !important;
+  background-color: #eef1f4 !important;
+  color: #8b949e !important;
+}
+
+.schedule-member-popup-tile.schedule-member-must-generic-bypass-btn.btn,
+.schedule-member-popup-tile.schedule-member-must-generic-bypass-btn.btn:is(:hover, :focus, :focus-visible, :active, .active, :first-child:active) {
+  border-color: #dc3545 !important;
+  background-color: var(--turny-success, #1f7a3f) !important;
+  color: #fff !important;
+}
+
+.schedule-member-shift-na.btn,
+.schedule-member-shift-na.btn:is(:hover, :focus, :focus-visible, :active),
+.schedule-member-shift-na.btn:disabled,
+.schedule-member-shift-na.btn:disabled:is(:hover, :focus, :active) {
+  border-color: #dee2e6 !important;
+  background-color: #f8f9fa !important;
+  color: #adb5bd !important;
+  opacity: 1 !important;
+  cursor: not-allowed !important;
+}

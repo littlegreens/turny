@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Sue_Ellen_Francisco, Titillium_Web } from "next/font/google";
 import "bootstrap-italia/dist/css/bootstrap-italia.min.css";
 import "./globals.css";
+import "./turny-buttons.css";
 import { AppToastProvider } from "@/components/app-toast-provider";
 
 const titillium = Titillium_Web({

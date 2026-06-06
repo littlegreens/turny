@@ -231,7 +231,7 @@ export function WorkerTurnsView({
               <>
                 <button
                   type="button"
-                  className="btn btn-sm btn-outline-success d-inline-flex align-items-center justify-content-center px-2"
+                  className="btn btn-sm btn-outline-success turny-icon-btn d-inline-flex align-items-center justify-content-center px-2"
                   aria-label="Riduci zoom anteprima"
                   title="Riduci zoom"
                   disabled={previewZoomIdx <= 0}
@@ -243,7 +243,7 @@ export function WorkerTurnsView({
                 </button>
                 <button
                   type="button"
-                  className="btn btn-sm btn-outline-success d-inline-flex align-items-center justify-content-center px-2"
+                  className="btn btn-sm btn-outline-success turny-icon-btn d-inline-flex align-items-center justify-content-center px-2"
                   aria-label="Ingrandisci zoom anteprima"
                   title="Ingrandisci zoom"
                   disabled={previewZoomIdx >= SCHEDULE_PREVIEW_ZOOM_LEVELS.length - 1}
@@ -258,10 +258,8 @@ export function WorkerTurnsView({
             {soloMeVisible ? (
               <button
                 type="button"
-                className={`btn btn-sm d-inline-flex align-items-center justify-content-center p-0 rounded-circle border-2 ${
-                  soloMeOnly
-                    ? "btn-success border-success"
-                    : "btn-outline-success bg-white border-success"
+                className={`btn btn-sm turny-icon-btn d-inline-flex align-items-center justify-content-center p-0 rounded-circle ${
+                  soloMeOnly ? "btn-success" : "btn-outline-success"
                 }`}
                 style={{ width: 40, height: 40 }}
                 title={soloMeOnly ? "Mostra tutti nei turni" : "Mostra solo i miei turni nelle viste"}

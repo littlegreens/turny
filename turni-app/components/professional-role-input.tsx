@@ -19,7 +19,8 @@ type Props = {
 };
 
 /**
- * Autocompletamento ruolo professionale: suggerimenti da ruoli già usati in org, senza duplicati per maiuscole/minuscole.
+ * Selezione ruoli professionali da elenco org: niente creazione digitando nel campo principale.
+ * I nuovi ruoli globali si creano da «Gestisci ruoli».
  */
 export function ProfessionalRoleInput({
   value,
@@ -39,6 +40,8 @@ export function ProfessionalRoleInput({
   const [deletingGlobalRole, setDeletingGlobalRole] = useState(false);
   const [editingGlobalRole, setEditingGlobalRole] = useState<string | null>(null);
   const [editingGlobalRoleDraft, setEditingGlobalRoleDraft] = useState("");
+  const [creatingNewRole, setCreatingNewRole] = useState(false);
+  const [newRoleDraft, setNewRoleDraft] = useState("");
   const [savingGlobalRole, setSavingGlobalRole] = useState(false);
   const [open, setOpen] = useState(false);
   const roles = useMemo(() => parseProfessionalRoles(value), [value]);
@@ -68,8 +71,10 @@ export function ProfessionalRoleInput({
   function pushRole(roleRaw: string) {
     const role = roleRaw.trim();
     if (!role) return;
+    const canonical = normalizedSuggestions.find((s) => s.toLowerCase() === role.toLowerCase());
+    if (!canonical) return;
     const next = [...roles];
-    if (!next.some((r) => r.toLowerCase() === role.toLowerCase())) next.push(role);
+    if (!next.some((r) => r.toLowerCase() === canonical.toLowerCase())) next.push(canonical);
     onChange(serializeProfessionalRoles(next));
     setQuery("");
     setOpen(false);
@@ -83,6 +88,43 @@ export function ProfessionalRoleInput({
   function pick(canonical: string) {
     pushRole(canonical);
     setOpen(false);
+  }
+
+  function tryPickFromQuery() {
+    const q = query.trim();
+    if (!q) return;
+    const exact = normalizedSuggestions.find((s) => s.toLowerCase() === q.toLowerCase());
+    if (exact) {
+      pick(exact);
+      return;
+    }
+    if (filtered.length === 1) pick(filtered[0]!);
+  }
+
+  function closeManageModal() {
+    setManageOpen(false);
+    setCreatingNewRole(false);
+    setNewRoleDraft("");
+    setEditingGlobalRole(null);
+    setEditingGlobalRoleDraft("");
+  }
+
+  async function createGlobalRole() {
+    if (!orgSlug || !canManageGlobalRoles || !newRoleDraft.trim()) return;
+    setSavingGlobalRole(true);
+    try {
+      const res = await fetch(`/api/orgs/${orgSlug}/professional-roles`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role: newRoleDraft.trim() }),
+      });
+      if (!res.ok) return;
+      setCreatingNewRole(false);
+      setNewRoleDraft("");
+      router.refresh();
+    } finally {
+      setSavingGlobalRole(false);
+    }
   }
 
   async function deleteGlobalRole(role: string) {
@@ -127,11 +169,13 @@ export function ProfessionalRoleInput({
     }, 150);
   }
 
+  const manageBusy = savingGlobalRole || creatingNewRole || editingGlobalRole !== null;
+
   return (
     <div className="position-relative">
       <div className="d-flex flex-wrap gap-2 mb-2">
         {roles.map((r) => (
-          <span key={r} className="d-inline-flex align-items-center gap-1 px-2 py-1 rounded-2" style={{ border: "1px solid #1f7a3f", background: "#edf7f0", color: "#1f7a3f", fontWeight: 600, fontSize: 12 }}>
+          <span key={r} className="turny-role-chip">
             {r}
             <button
               type="button"
@@ -141,59 +185,59 @@ export function ProfessionalRoleInput({
               disabled={disabled}
               style={{ width: 18, height: 18, color: "#1f7a3f", borderRadius: "50%" }}
             >
-              <span style={{ fontSize: 12, lineHeight: 1 }}>✕</span>
+              <span aria-hidden="true" style={{ lineHeight: 1 }}>✕</span>
             </button>
           </span>
         ))}
       </div>
-      <input
-        id={id}
-        name={name}
-        type="text"
-        className={className}
-        value={query}
-        onChange={(e) => {
-          setQuery(e.target.value);
-          setOpen(true);
-        }}
-        onFocus={() => setOpen(true)}
-        onBlur={handleBlur}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            pushRole(query);
-          }
-        }}
-        disabled={disabled}
-        placeholder={placeholder ?? "Scrivi ruolo e premi invio"}
-        /* organization-title = ruolo/titolo lavorativo; riduce prompt “gestisci password” vicino a email/password */
-        autoComplete="organization-title"
-        data-1p-ignore
-        data-lpignore="true"
-        data-form-type="other"
-        aria-autocomplete="list"
-        aria-expanded={open}
-      />
-      {open && filtered.length > 0 && !disabled ? (
-        <ul
-          className="list-group position-absolute shadow-sm border rounded-2 mt-1 py-0"
-          style={{ zIndex: 50, maxHeight: 220, overflowY: "auto", width: "100%", listStyle: "none" }}
-          role="listbox"
-        >
-          {filtered.map((s) => (
-            <li key={s}>
-              <button
-                type="button"
-                className="list-group-item list-group-item-action py-2 px-3 small text-start w-100 border-0 rounded-0 bg-white"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => pick(s)}
-              >
-                {s}
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : null}
+      <div className="position-relative turny-role-input-field">
+        <input
+          id={id}
+          name={name}
+          type="text"
+          className={className}
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+          onBlur={handleBlur}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              tryPickFromQuery();
+            }
+          }}
+          disabled={disabled}
+          placeholder={placeholder ?? "Cerca e seleziona un ruolo esistente"}
+          autoComplete="organization-title"
+          data-1p-ignore
+          data-lpignore="true"
+          data-form-type="other"
+          aria-autocomplete="list"
+          aria-expanded={open}
+        />
+        {open && filtered.length > 0 && !disabled ? (
+          <ul className="list-group turny-autocomplete-menu py-0" role="listbox">
+            {filtered.map((s) => (
+              <li key={s}>
+                <button
+                  type="button"
+                  className="list-group-item list-group-item-action py-2 px-3 small text-start w-100 border-0 rounded-0 bg-white"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => pick(s)}
+                >
+                  {s}
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
+      <p className="small text-secondary mt-1 mb-0">
+        Per aggiungere un ruolo nuovo usa «Gestisci ruoli»
+      </p>
       <button type="button" className="btn btn-sm btn-outline-secondary mt-2" onClick={() => setManageOpen(true)} disabled={disabled}>
         Gestisci ruoli
       </button>
@@ -204,14 +248,55 @@ export function ProfessionalRoleInput({
               <div className="modal-content turny-modal">
                 <div className="modal-header">
                   <h5 className="modal-title">Gestisci ruoli</h5>
-                  <button type="button" className="btn-close" aria-label="Chiudi" onClick={() => setManageOpen(false)} />
+                  <button type="button" className="btn-close" aria-label="Chiudi" onClick={closeManageModal} />
                 </div>
                 <div className="modal-body pb-4">
-                  <p className="fw-semibold mb-1">Ruoli generali creati</p>
-                  <p className="small text-secondary mb-3">
-                    Cancellando un ruolo verrà eliminato globalmente e tolto da tutte le persone.
-                  </p>
+                  <div className="mb-3">
+                    <p className="fw-semibold mb-1">Ruoli generali</p>
+                    <p className="small text-secondary mb-0">
+                      Crea un ruolo e salva. Eliminando un ruolo verrà tolto da tutte le persone.
+                    </p>
+                  </div>
                   <div className="d-grid gap-2">
+                    {creatingNewRole ? (
+                      <div className="border rounded d-flex align-items-center justify-content-between p-2 gap-2">
+                        <input
+                          className="form-control form-control-sm input-underlined"
+                          value={newRoleDraft}
+                          onChange={(e) => setNewRoleDraft(e.target.value)}
+                          disabled={savingGlobalRole}
+                          placeholder="Nome del nuovo ruolo"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              void createGlobalRole();
+                            }
+                          }}
+                        />
+                        <div className="d-flex align-items-center gap-2 flex-shrink-0">
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-success turny-btn-action"
+                            onClick={() => void createGlobalRole()}
+                            disabled={savingGlobalRole || !newRoleDraft.trim() || !canManageGlobalRoles}
+                          >
+                            Salva
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-outline-secondary"
+                            onClick={() => {
+                              setCreatingNewRole(false);
+                              setNewRoleDraft("");
+                            }}
+                            disabled={savingGlobalRole}
+                          >
+                            Annulla
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
                     {normalizedSuggestions.map((r) => (
                       <div key={r} className="border rounded d-flex align-items-center justify-content-between p-2 gap-2">
                         <div className="flex-grow-1">
@@ -230,7 +315,7 @@ export function ProfessionalRoleInput({
                         <div className="d-flex align-items-center gap-2">
                           {editingGlobalRole === r ? (
                             <>
-                              <button type="button" className="btn btn-sm btn-success" onClick={() => void renameGlobalRole()} disabled={savingGlobalRole || !editingGlobalRoleDraft.trim() || !canManageGlobalRoles}>
+                              <button type="button" className="btn btn-sm btn-success turny-btn-action" onClick={() => void renameGlobalRole()} disabled={savingGlobalRole || !editingGlobalRoleDraft.trim() || !canManageGlobalRoles}>
                                 Salva
                               </button>
                               <button
@@ -249,20 +334,20 @@ export function ProfessionalRoleInput({
                             <>
                               <button
                                 type="button"
-                                className="btn btn-sm btn-outline-secondary"
+                                className="btn btn-sm btn-outline-secondary turny-btn-action"
                                 onClick={() => {
                                   setEditingGlobalRole(r);
                                   setEditingGlobalRoleDraft(r);
                                 }}
-                                disabled={!canManageGlobalRoles}
+                                disabled={!canManageGlobalRoles || manageBusy}
                               >
                                 Modifica
                               </button>
                               <button
                                 type="button"
-                                className="btn btn-sm btn-outline-danger"
+                                className="btn btn-sm btn-danger turny-btn-action"
                                 onClick={() => setDeleteTargetRole(r)}
-                                disabled={disabled || !canManageGlobalRoles}
+                                disabled={disabled || !canManageGlobalRoles || manageBusy}
                               >
                                 Elimina
                               </button>
@@ -271,18 +356,33 @@ export function ProfessionalRoleInput({
                         </div>
                       </div>
                     ))}
-                    {!normalizedSuggestions.length ? <span className="small text-secondary">Nessun ruolo globale definito.</span> : null}
+                    {!normalizedSuggestions.length && !creatingNewRole ? (
+                      <span className="small text-secondary">Nessun ruolo definito. Usa «Crea» in basso per aggiungerne uno.</span>
+                    ) : null}
                   </div>
                 </div>
                 <div className="modal-footer">
-                  <button type="button" className="btn btn-outline-secondary" onClick={() => setManageOpen(false)}>
+                  {canManageGlobalRoles && !creatingNewRole && !editingGlobalRole ? (
+                    <button
+                      type="button"
+                      className="btn btn-success"
+                      onClick={() => {
+                        setCreatingNewRole(true);
+                        setNewRoleDraft("");
+                      }}
+                      disabled={savingGlobalRole}
+                    >
+                      Crea
+                    </button>
+                  ) : null}
+                  <button type="button" className="btn btn-outline-secondary" onClick={closeManageModal}>
                     Chiudi
                   </button>
                 </div>
               </div>
             </div>
           </div>
-          <div role="presentation" onClick={() => setManageOpen(false)} style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.06)", zIndex: 1040 }} />
+          <div role="presentation" onClick={closeManageModal} style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.06)", zIndex: 1040 }} />
         </>
       ) : null}
       {deleteTargetRole ? (
@@ -299,7 +399,7 @@ export function ProfessionalRoleInput({
                     Confermi l&apos;eliminazione del ruolo <strong>{deleteTargetRole}</strong>? Verrà cancellato per tutte le persone.
                   </p>
                 </div>
-                <div className="modal-footer d-flex justify-content-between">
+                <div className="modal-footer turny-modal-footer-split">
                   <button type="button" className="btn btn-outline-secondary" onClick={() => setDeleteTargetRole(null)} disabled={deletingGlobalRole}>
                     Annulla
                   </button>

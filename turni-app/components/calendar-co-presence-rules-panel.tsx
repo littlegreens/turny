@@ -170,7 +170,7 @@ export function CalendarCoPresenceRulesPanel({ calId, canEdit, initialCalendarRu
                   <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => open(r.id)} disabled={loading}>
                     Modifica
                   </button>
-                  <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => void persist(rules.filter((x) => x.id !== r.id))} disabled={!canEdit || loading}>
+                  <button type="button" className="btn btn-sm btn-danger turny-btn-action" onClick={() => void persist(rules.filter((x) => x.id !== r.id))} disabled={!canEdit || loading}>
                     Elimina
                   </button>
                 </div>
@@ -276,7 +276,7 @@ export function CalendarCoPresenceRulesPanel({ calId, canEdit, initialCalendarRu
                     </div>
                   </div>
                 </div>
-                <div className="modal-footer d-flex justify-content-between">
+                <div className="modal-footer turny-modal-footer-split">
                   <button type="button" className="btn btn-outline-secondary" onClick={() => setModalOpen(false)} disabled={loading}>
                     Annulla
                   </button>

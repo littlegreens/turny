@@ -170,7 +170,7 @@ export function OrgTurnListItem({ orgSlug, schedule, canEdit }: Props) {
               <button className="btn btn-sm btn-outline-secondary" onClick={() => setEditing(true)}>
                 Modifica
               </button>
-              <button className="btn btn-sm btn-outline-danger" onClick={() => setDeleteOpen(true)}>
+              <button className="btn btn-sm btn-danger turny-btn-action" onClick={() => setDeleteOpen(true)}>
                 Elimina
               </button>
             </>

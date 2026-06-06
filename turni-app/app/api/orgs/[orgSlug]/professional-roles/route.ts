@@ -3,6 +3,11 @@ import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { hasAnyRole, normalizeRoles } from "@/lib/org-roles";
+import {
+  addOrgProfessionalRoleCatalog,
+  removeOrgProfessionalRoleCatalog,
+  renameOrgProfessionalRoleCatalog,
+} from "@/lib/org-professional-roles";
 import { parseProfessionalRoles, serializeProfessionalRoles } from "@/lib/professional-roles";
 import { prisma } from "@/lib/prisma";
 
@@ -13,25 +18,49 @@ const renameSchema = z.object({
   oldRole: z.string().trim().min(1),
   newRole: z.string().trim().min(1),
 });
+const createSchema = z.object({
+  role: z.string().trim().min(1).max(80),
+});
 
 type Params = {
   params: Promise<{ orgSlug: string }>;
 };
+
+async function authorizeManager(orgSlug: string, userId: string) {
+  const membership = await prisma.orgMember.findFirst({
+    where: { userId, org: { slug: orgSlug } },
+    include: { org: true },
+  });
+  if (!membership) return null;
+  const roles = normalizeRoles([membership.role, ...membership.roles]);
+  if (!hasAnyRole(roles, ["OWNER", "ADMIN", "MANAGER"])) return null;
+  return membership;
+}
+
+export async function POST(request: Request, { params }: Params) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
+
+  const { orgSlug } = await params;
+  const membership = await authorizeManager(orgSlug, session.user.id);
+  if (!membership) return NextResponse.json({ error: "Permessi insufficienti" }, { status: 403 });
+
+  const parsed = createSchema.safeParse(await request.json().catch(() => ({})));
+  if (!parsed.success) return NextResponse.json({ error: "Input non valido" }, { status: 400 });
+
+  const created = await addOrgProfessionalRoleCatalog(membership.orgId, parsed.data.role);
+  if (!created) return NextResponse.json({ error: "Ruolo non valido" }, { status: 400 });
+
+  return NextResponse.json({ ok: true, role: created });
+}
 
 export async function DELETE(request: Request, { params }: Params) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
 
   const { orgSlug } = await params;
-  const membership = await prisma.orgMember.findFirst({
-    where: { userId: session.user.id, org: { slug: orgSlug } },
-    include: { org: true },
-  });
-  if (!membership) return NextResponse.json({ error: "Accesso negato" }, { status: 403 });
-  const roles = normalizeRoles([membership.role, ...membership.roles]);
-  if (!hasAnyRole(roles, ["OWNER", "ADMIN", "MANAGER"])) {
-    return NextResponse.json({ error: "Permessi insufficienti" }, { status: 403 });
-  }
+  const membership = await authorizeManager(orgSlug, session.user.id);
+  if (!membership) return NextResponse.json({ error: "Permessi insufficienti" }, { status: 403 });
 
   const parsed = deleteSchema.safeParse(await request.json().catch(() => ({})));
   if (!parsed.success) return NextResponse.json({ error: "Input non valido" }, { status: 400 });
@@ -57,6 +86,8 @@ export async function DELETE(request: Request, { params }: Params) {
     ];
   });
 
+  await removeOrgProfessionalRoleCatalog(membership.orgId, parsed.data.role);
+
   if (updates.length) {
     await prisma.$transaction(updates);
   }
@@ -69,15 +100,8 @@ export async function PATCH(request: Request, { params }: Params) {
   if (!session?.user?.id) return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
 
   const { orgSlug } = await params;
-  const membership = await prisma.orgMember.findFirst({
-    where: { userId: session.user.id, org: { slug: orgSlug } },
-    include: { org: true },
-  });
-  if (!membership) return NextResponse.json({ error: "Accesso negato" }, { status: 403 });
-  const roles = normalizeRoles([membership.role, ...membership.roles]);
-  if (!hasAnyRole(roles, ["OWNER", "ADMIN", "MANAGER"])) {
-    return NextResponse.json({ error: "Permessi insufficienti" }, { status: 403 });
-  }
+  const membership = await authorizeManager(orgSlug, session.user.id);
+  if (!membership) return NextResponse.json({ error: "Permessi insufficienti" }, { status: 403 });
 
   const parsed = renameSchema.safeParse(await request.json().catch(() => ({})));
   if (!parsed.success) return NextResponse.json({ error: "Input non valido" }, { status: 400 });
@@ -112,10 +136,11 @@ export async function PATCH(request: Request, { params }: Params) {
     ];
   });
 
+  await renameOrgProfessionalRoleCatalog(membership.orgId, parsed.data.oldRole, newRole);
+
   if (updates.length) {
     await prisma.$transaction(updates);
   }
 
   return NextResponse.json({ ok: true, updatedUsers: updates.length });
 }
-

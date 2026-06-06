@@ -5,8 +5,10 @@ Obiettivo «best effort»: copertura minima e massimali contrattuali sono soft (
 **Obblighi scheda** (requiredDates / requiredShifts) sono HARD sulle assegnazioni: non si ignorano.
 Co-presenza «insieme» / «non insieme» e i vincoli tra giorni sono preferiti ma rilassabili nel target
 (penalità) così il piano non diventa INFEASIBLE; copertura sotto minimo resta soft. DEVE e indisponibilità restano rigidi.
-Il bilanciamento turni tra persone è affidato a W_SPREAD (gap max−min totale) e W_SHIFT_MIX (mix tipi turno
-per persona); il tiebreaker casuale (RAND_W) differenzia piani equivalenti tra generazioni successive.
+Il bilanciamento turni tra persone normali è affidato a W_SPREAD (gap max−min, esclusi extra disponibilità).
+Extra disponibilità: priorità al riempimento del tetto (W_EXTRA_UNDER), preferenza sulle assegnazioni
+(W_EXTRA_SLOT), tetto mensile superabile con penalità bassa (W_EXTRA_OVER) per chiudere buchi organici;
+i normali non superano il tetto salvo penalità alta (W_CAP_M).
 """
 
 from __future__ import annotations
@@ -125,6 +127,11 @@ def _single_cp_solve(
         stids = [str(x) for x in (h.get("shiftTypeIds") or []) if str(x)]
         holiday_map[dte] = {"mode": mode, "shiftTypeIds": set(stids)}
 
+    festivo_dates = set(str(x) for x in (problem.get("festivoDates") or []) if str(x))
+
+    def counts_as_festivo_day(dte: str) -> bool:
+        return js_utcdow_from_iso(dte) == 0 or dte in festivo_dates
+
     fixed_cell: dict[tuple[str, str], int] = {}
     fixed_md: list[list[bool]] = [[False] * D for _ in range(M)]
     fixed_night_md: list[list[bool]] = [[False] * D for _ in range(M)]
@@ -133,8 +140,9 @@ def _single_cp_solve(
     fixed_tot = [0] * M
     fixed_nights = [0] * M
     fixed_sats = [0] * M
-    fixed_suns = [0] * M
+    fixed_festive_days = [0] * M
     fixed_we = [0] * M
+    fixed_festive_seen: list[set[str]] = [set() for _ in range(M)]
     fixed_by_ms = [[0] * S for _ in range(M)]
 
     for fa in fixed:
@@ -170,9 +178,12 @@ def _single_cp_solve(
         if dow == 6:
             fixed_sats[mi] += 1
             is_we = True
-        elif dow == 0:
-            fixed_suns[mi] += 1
-            is_we = True
+        if counts_as_festivo_day(dte):
+            if dte not in fixed_festive_seen[mi]:
+                fixed_festive_seen[mi].add(dte)
+                fixed_festive_days[mi] += 1
+            if dow in (0, 6):
+                is_we = True
         elif bool(st.get("countsAsWeekend")) and dow in (5, 6, 0):
             is_we = True
         if is_we:
@@ -222,7 +233,19 @@ def _single_cp_solve(
             if si_match is None:
                 continue
             dow = js_utcdow_from_iso(dte)
-            if dow not in shift_types[si_match].get("activeWeekdays", []):
+            ho_req = holiday_map.get(dte)
+            if ho_req:
+                hm = str(ho_req["mode"])
+                if hm in ("CLOSED", "FESTIVO"):
+                    if sid not in ho_req["shiftTypeIds"]:
+                        continue
+                elif hm == "CUSTOM":
+                    if sid not in ho_req["shiftTypeIds"]:
+                        continue
+                elif hm == "SUNDAY_LIKE":
+                    if 0 not in shift_types[si_match].get("activeWeekdays", []):
+                        continue
+            elif dow not in shift_types[si_match].get("activeWeekdays", []):
                 continue
             ok_fixed = any(
                 str(fa.get("memberId", "")) == mid_cal
@@ -244,16 +267,21 @@ def _single_cp_solve(
             aw = st.get("activeWeekdays", [])
             if ho:
                 hm = str(ho["mode"])
-                if hm == "CLOSED":
-                    continue
-                if hm == "SUNDAY_LIKE":
+                if hm in ("CLOSED", "FESTIVO"):
+                    allowed = ho["shiftTypeIds"]
+                    if not allowed:
+                        continue
+                    if sid not in allowed:
+                        continue
+                elif hm == "SUNDAY_LIKE":
                     if 0 not in aw:
                         continue
                 elif hm == "CUSTOM":
                     if sid not in ho["shiftTypeIds"]:
                         continue
-                elif dow not in aw:
-                    continue
+                else:
+                    if dow not in aw:
+                        continue
             elif dow not in aw:
                 continue
             min_staff = int(st.get("minStaff", 1))
@@ -277,7 +305,17 @@ def _single_cp_solve(
     def _member_label(mi: int) -> str:
         return str(members[mi].get("label") or members[mi].get("id") or "?")
 
+    extra_mi = [bool(members[mi].get("extraAvailability")) for mi in range(M)]
+
     pre_alerts: list[dict[str, Any]] = []
+    for msg in problem.get("roleSetupWarnings") or []:
+        if isinstance(msg, str) and msg.strip():
+            pre_alerts.append(
+                {
+                    "type": "ROLE_COVERAGE_IMPOSSIBLE",
+                    "message": msg.strip(),
+                }
+            )
     big = D * S + (max(fixed_tot) if fixed_tot else 0) + 20
 
     # Pesi: copertura sotto minimo, poi massimali contrattuali, poi equità.
@@ -291,6 +329,10 @@ def _single_cp_solve(
     W_CAP_N = 26_000_000
     W_CAP_DOW = 24_000_000
     W_CAP_WE = 24_000_000
+    # Extra disponibilità: riempimento tetto, preferenza slot, sforamento tetto solo a basso costo.
+    W_EXTRA_UNDER = 6_000
+    W_EXTRA_OVER = 800
+    W_EXTRA_SLOT = 1_500
 
     model = cp_model.CpModel()
     obj_terms: list[cp_model.LinearExpr] = []
@@ -320,11 +362,15 @@ def _single_cp_solve(
             if str(p.get("date")) == dte and str(p.get("shiftTypeId")) == sid:
                 if not shift_unlocked:
                     return True
+        wd_shift_key = f"{dow}|{sid}"
+        if wd_shift_key in set(m.get("unavailableWeekdayShiftHard") or []):
+            if dte not in festivo_dates and not shift_unlocked:
+                return True
         if sid in set(m.get("unavailableShiftTypeIdsHard") or []):
             if not shift_unlocked:
                 return True
         if dow in set(m.get("unavailableWeekdaysHard") or []):
-            if not day_unlocked:
+            if dte not in festivo_dates and not day_unlocked:
                 return True
         if fixed_md[mi][di]:
             return True
@@ -437,9 +483,11 @@ def _single_cp_solve(
         }
 
     cover_slacks: list[tuple[cp_model.IntVar, int, str, str, str]] = []
+    cover_slack_by_cell: dict[tuple[int, int], cp_model.IntVar] = {}
     for di, si in active_cells:
         n = need[(di, si)]
         slack = model.NewIntVar(0, n, f"cov_sl_{di}_{si}")
+        cover_slack_by_cell[(di, si)] = slack
         x_sum_terms = [x[(mi, di, si)] for mi in range(M)]
         max_s = shift_types[si].get("maxStaff")
         have_fixed = fixed_cell.get((dates[di], st_id_at[si]), 0)
@@ -456,14 +504,16 @@ def _single_cp_solve(
         sn = str(shift_types[si].get("name") or st_id_at[si])
         cover_slacks.append((slack, n, dte, sn, str(st_id_at[si])))
 
-    # Composizione per ruolo (minimi). È "best effort" come la copertura:
-    # il solver prova a rispettarla; se i fissi la rendono impossibile nella cella (slot pieno), non blocca e genera alert.
+    # Composizione per ruolo. Con `roleCompositionHard`: cap rigido (mai mix errato) + solo persone
+    # con ruolo ammesso; il riempimento organico è guidato dal solo slack copertura (W_COVER), senza
+    # penalità ruolo duplicate sullo stesso buco. Senza hard: slack ruolo soft aggiuntivo.
     role_slacks: list[tuple[cp_model.IntVar, int, str, str, str, str]] = []
     for di, si in active_cells:
         st = shift_types[si]
         rc = st.get("roleCoverage") or []
         if not isinstance(rc, list) or not rc:
             continue
+        role_hard = bool(st.get("roleCompositionHard"))
         dte = dates[di]
         sid = str(st_id_at[si])
         st_name = str(st.get("name") or sid)
@@ -491,7 +541,18 @@ def _single_cp_solve(
                 role = str(rr.get("role") or "").strip()
                 member_ids = [str(x) for x in (rr.get("memberIds") or []) if str(x)]
                 min_cnt = int(rr.get("minCount") or 0)
-                if min_cnt <= 0 or not member_ids:
+                if min_cnt <= 0:
+                    continue
+                if not member_ids:
+                    pre_alerts.append(
+                        {
+                            "type": "ROLE_COVERAGE_IMPOSSIBLE",
+                            "message": f"Composizione ruoli in {st_name} il {dte}: nessun membro con ruolo «{role}» in anagrafica.",
+                            "date": dte,
+                            "shiftTypeId": sid,
+                            "role": role,
+                        }
+                    )
                     continue
                 member_set = set(member_ids)
                 have_role = 0
@@ -514,14 +575,91 @@ def _single_cp_solve(
                     )
             continue
 
-        # Caso normale: imponiamo minimi ruolo con slack (penalità alta), usando sia fissi sia variabili x.
+        if role_hard:
+            allowed_ids: set[str] = set()
+            roles_info: list[tuple[str, set[str], int]] = []
+            for rr0 in rc:
+                if not isinstance(rr0, dict):
+                    continue
+                role0 = str(rr0.get("role") or "").strip()
+                member_ids0 = [str(xid) for xid in (rr0.get("memberIds") or []) if str(xid)]
+                min_cnt0 = int(rr0.get("minCount") or 0)
+                if min_cnt0 <= 0 or not role0:
+                    continue
+                if not member_ids0:
+                    pre_alerts.append(
+                        {
+                            "type": "ROLE_COVERAGE_IMPOSSIBLE",
+                            "message": f"Composizione ruoli in {st_name} il {dte}: nessun membro con ruolo «{role0}» in anagrafica.",
+                            "date": dte,
+                            "shiftTypeId": sid,
+                            "role": role0,
+                        }
+                    )
+                    continue
+                allowed_ids.update(member_ids0)
+                member_set0 = set(member_ids0)
+                fixed_role0 = 0
+                for fa in fixed:
+                    if str(fa.get("date", "")) != dte or str(fa.get("shiftTypeId", "")) != sid:
+                        continue
+                    if bool(fa.get("isGuestFixed")):
+                        continue
+                    mid_cal0 = str(fa.get("memberId", "") or "")
+                    if mid_cal0 and mid_cal0 in member_set0:
+                        fixed_role0 += 1
+                n_need0 = max(0, min_cnt0 - fixed_role0)
+                if n_need0 > 0:
+                    roles_info.append((role0, member_set0, n_need0))
+
+            for mi in range(M):
+                mid = str(members[mi].get("id") or "")
+                if mid not in allowed_ids and (mi, di, si) in x:
+                    model.Add(x[(mi, di, si)] == 0)
+
+            # Una persona copre al massimo UN ruolo per cella (PS+degenza insieme ≠ 2 posti).
+            role_fills: dict[tuple[int, str], cp_model.IntVar] = {}
+            for mi in range(M):
+                if (mi, di, si) not in x:
+                    continue
+                mid = str(members[mi].get("id") or "")
+                eligible = [role0 for role0, mset0, _ in roles_info if mid in mset0]
+                if not eligible:
+                    continue
+                if len(eligible) == 1:
+                    role0 = eligible[0]
+                    b = model.NewBoolVar(f"rf_{di}_{si}_{mi}_{role0[:12]}")
+                    model.Add(b == x[(mi, di, si)])
+                    role_fills[(mi, role0)] = b
+                else:
+                    fills: list[cp_model.IntVar] = []
+                    for role0 in eligible:
+                        b = model.NewBoolVar(f"rf_{di}_{si}_{mi}_{role0[:12]}")
+                        role_fills[(mi, role0)] = b
+                        fills.append(b)
+                        model.AddImplication(b, x[(mi, di, si)])
+                    model.Add(sum(fills) == x[(mi, di, si)])
+
+            for role0, _mset0, n_need0 in roles_info:
+                rv = [role_fills[(mi, role0)] for mi in range(M) if (mi, role0) in role_fills]
+                if rv:
+                    model.Add(sum(rv) <= n_need0)
+                slack = model.NewIntVar(0, n_need0, f"role_sl_{di}_{si}_{role0[:12]}")
+                if rv:
+                    model.Add(sum(rv) + slack >= n_need0)
+                else:
+                    model.Add(slack >= n_need0)
+                obj_terms.append((W_COVER // 4) * slack)
+                role_slacks.append((slack, n_need0, dte, st_name, sid, role0))
+            continue
+
         for rr in rc:
             if not isinstance(rr, dict):
                 continue
             role = str(rr.get("role") or "").strip()
             member_ids = [str(x) for x in (rr.get("memberIds") or []) if str(x)]
             min_cnt = int(rr.get("minCount") or 0)
-            if min_cnt <= 0 or not member_ids:
+            if min_cnt <= 0:
                 continue
 
             member_set = set(member_ids)
@@ -538,17 +676,30 @@ def _single_cp_solve(
             n_need = max(0, min_cnt - fixed_role)
             if n_need <= 0:
                 continue
-            slack = model.NewIntVar(0, n_need, f"role_sl_{di}_{si}_{role}")
+
             role_vars = []
             for mi in range(M):
                 mid = str(members[mi].get("id") or "")
                 if mid in member_set and (mi, di, si) in x:
                     role_vars.append(x[(mi, di, si)])
+
+            if not member_ids:
+                pre_alerts.append(
+                    {
+                        "type": "ROLE_COVERAGE_IMPOSSIBLE",
+                        "message": f"Composizione ruoli in {st_name} il {dte}: nessun membro con ruolo «{role}» in anagrafica.",
+                        "date": dte,
+                        "shiftTypeId": sid,
+                        "role": role,
+                    }
+                )
+                continue
+
+            slack = model.NewIntVar(0, n_need, f"role_sl_{di}_{si}_{role}")
             if role_vars:
                 model.Add(sum(role_vars) + slack >= n_need)
             else:
                 model.Add(slack >= n_need)
-            # Penale più alta della copertura, così il solver preferisce soddisfare i ruoli se possibile.
             obj_terms.append((W_COVER + 2_000_000) * slack)
             role_slacks.append((slack, n_need, dte, st_name, sid, role))
 
@@ -682,7 +833,8 @@ def _single_cp_solve(
                 model.Add(sum(xs) + fixed_tot[mi] <= c + viol)
             else:
                 model.Add(fixed_tot[mi] <= c + viol)
-            obj_terms.append(W_CAP_M * viol)
+            w_cap_m = W_EXTRA_OVER if extra_mi[mi] else W_CAP_M
+            obj_terms.append(w_cap_m * viol)
 
         cap_n = m.get("maxNightsMonth")
         if cap_n is not None and isinstance(cap_n, (int, float)):
@@ -702,16 +854,6 @@ def _single_cp_solve(
                 model.Add(sum(terms) + fixed_sats[mi] <= int(cap_sa) + viol)
             else:
                 model.Add(fixed_sats[mi] <= int(cap_sa) + viol)
-            obj_terms.append(W_CAP_DOW * viol)
-
-        cap_su = m.get("maxSundaysMonth")
-        if cap_su is not None and isinstance(cap_su, (int, float)):
-            terms = [x[k] for k in x if k[0] == mi and js_utcdow_from_iso(dates[k[1]]) == 0]
-            viol = model.NewIntVar(0, big, f"capsu_{mi}")
-            if terms:
-                model.Add(sum(terms) + fixed_suns[mi] <= int(cap_su) + viol)
-            else:
-                model.Add(fixed_suns[mi] <= int(cap_su) + viol)
             obj_terms.append(W_CAP_DOW * viol)
 
         cap_we = m.get("maxWeekendDaysMonth")
@@ -749,6 +891,17 @@ def _single_cp_solve(
                     sxs = sum(xs)
                     model.Add(sxs >= 1).OnlyEnforceIf(hw[mi][di])
                     model.Add(sxs == 0).OnlyEnforceIf(hw[mi][di].Not())
+
+    for mi in range(M):
+        cap_su = members[mi].get("maxSundaysMonth")
+        if cap_su is not None and isinstance(cap_su, (int, float)):
+            festive_di = [di for di in range(D) if counts_as_festivo_day(dates[di])]
+            viol = model.NewIntVar(0, big, f"capsu_{mi}")
+            if festive_di:
+                model.Add(sum(hw[mi][di] for di in festive_di) <= int(cap_su) + viol)
+            else:
+                model.Add(fixed_festive_days[mi] <= int(cap_su) + viol)
+            obj_terms.append(W_CAP_DOW * viol)
 
     for mi in range(M):
         m = members[mi]
@@ -960,16 +1113,19 @@ def _single_cp_solve(
     else:
         rng = random.Random((hash(str(schedule_id)) & 0xFFFFFFFF) or 42)
 
-    W_JOLLY = 10_000
     W_SOFT = 50
     RAND_W = 6
+    # Incentivo a riempire fasce con composizione ruoli hard (stesso ordine di priorità della copertura).
+    W_FILL_ROLE = 150_000
 
     for (mi, di, si), var in x.items():
-        if bool(members[mi].get("isJolly")):
-            obj_terms.append(W_JOLLY * var)
         sp = soft_penalty(mi, di, si)
         if sp:
             obj_terms.append(W_SOFT * sp * var)
+        if extra_mi[mi]:
+            obj_terms.append(-W_EXTRA_SLOT * var)
+        if bool(shift_types[si].get("roleCompositionHard")):
+            obj_terms.append(-W_FILL_ROLE * var)
         coef = rng.randint(0, RAND_W)
         if coef:
             obj_terms.append(coef * var)
@@ -984,14 +1140,31 @@ def _single_cp_solve(
         else:
             model.Add(t_mi == fixed_tot[mi])
         tot_vars.append(t_mi)
-    max_shifts = model.NewIntVar(0, upper_bound, "max_shifts_bal")
-    min_shifts = model.NewIntVar(0, upper_bound, "min_shifts_bal")
-    model.AddMaxEquality(max_shifts, tot_vars)
-    model.AddMinEquality(min_shifts, tot_vars)
-    spread = model.NewIntVar(0, upper_bound, "spread_bal")
-    model.Add(spread == max_shifts - min_shifts)
-    W_SPREAD = 400
-    obj_terms.append(W_SPREAD * spread)
+
+    normal_indices = [mi for mi in range(M) if not extra_mi[mi]]
+    if len(normal_indices) >= 2:
+        normal_tot = [tot_vars[mi] for mi in normal_indices]
+        max_shifts = model.NewIntVar(0, upper_bound, "max_shifts_bal")
+        min_shifts = model.NewIntVar(0, upper_bound, "min_shifts_bal")
+        model.AddMaxEquality(max_shifts, normal_tot)
+        model.AddMinEquality(min_shifts, normal_tot)
+        spread = model.NewIntVar(0, upper_bound, "spread_bal")
+        model.Add(spread == max_shifts - min_shifts)
+        W_SPREAD = 400
+        obj_terms.append(W_SPREAD * spread)
+
+    for mi in range(M):
+        if not extra_mi[mi]:
+            continue
+        cap = members[mi].get("maxShiftsMonth")
+        if cap is None or not isinstance(cap, (int, float)):
+            continue
+        c = int(cap)
+        if c <= fixed_tot[mi]:
+            continue
+        under = model.NewIntVar(0, c, f"extra_under_{mi}")
+        model.Add(under >= c - tot_vars[mi])
+        obj_terms.append(W_EXTRA_UNDER * under)
 
     if S >= 2:
         W_SHIFT_MIX = 180
@@ -1024,7 +1197,15 @@ def _single_cp_solve(
 
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = max(3.0, float(time_limit_sec))
+    # Ricerca parallela: usa fino al timeout per migliorare la soluzione (non si ferma al primo buco).
+    solver.parameters.num_search_workers = 8
+
     status = solver.Solve(model)
+    solve_meta = {
+        "wallTimeSec": round(float(solver.WallTime()), 2),
+        "cpStatus": solver.StatusName(status),
+        "timeLimitSec": float(time_limit_sec),
+    }
 
     if status == cp_model.INFEASIBLE:
         alerts_out: list[dict[str, Any]] = list(pre_alerts)
@@ -1146,7 +1327,6 @@ def _single_cp_solve(
     new_assign_count = [0] * M
     new_nights = [0] * M
     new_sats = [0] * M
-    new_suns = [0] * M
     new_we = [0] * M
     for k, var in x.items():
         if int(solver.Value(var)) != 1:
@@ -1160,10 +1340,16 @@ def _single_cp_solve(
             new_nights[mi] += 1
         if dow == 6:
             new_sats[mi] += 1
-        elif dow == 0:
-            new_suns[mi] += 1
         if dow in (0, 6) or (bool(st.get("countsAsWeekend")) and dow in (5, 6, 0)):
             new_we[mi] += 1
+
+    new_festive_days = [0] * M
+    for mi in range(M):
+        for di in range(D):
+            if not counts_as_festivo_day(dates[di]):
+                continue
+            if int(solver.Value(hw[mi][di])) == 1:
+                new_festive_days[mi] += 1
 
     for mi in range(M):
         m = members[mi]
@@ -1172,11 +1358,34 @@ def _single_cp_solve(
             c = int(cap)
             tot = new_assign_count[mi] + fixed_tot[mi]
             if tot > c:
+                lbl = _member_label(mi)
+                if extra_mi[mi]:
+                    alerts.append(
+                        {
+                            "type": "EXTRA_AVAIL_OVER_CAP",
+                            "message": (
+                                f"{lbl}: extra disponibilità — {tot} turni nel periodo "
+                                f"(tetto {c}, +{tot - c} per coprire buchi organici)."
+                            ),
+                            "memberId": mem_id_at[mi],
+                        }
+                    )
+                else:
+                    alerts.append(
+                        {
+                            "type": "CONTRACT_CAP_MONTH",
+                            "message": f"{lbl}: {tot} turni nel periodo (tetto {c}, superato di {tot - c}).",
+                            "memberId": mem_id_at[mi],
+                        }
+                    )
+            elif extra_mi[mi] and tot < c:
                 alerts.append(
                     {
-                        "type": "CONTRACT_CAP_MONTH",
-                        "message": f"{_member_label(mi)}: {tot} turni nel periodo rispetto a un tetto di {c} "
-                        f"(superato di {tot - c}; necessario per chiudere il piano).",
+                        "type": "EXTRA_AVAIL_UNDER_CAP",
+                        "message": (
+                            f"{lbl}: extra disponibilità — {tot} turni nel periodo "
+                            f"rispetto al tetto {c} (mancano {c - tot}; verifica vincoli o indisponibilità)."
+                        ),
                         "memberId": mem_id_at[mi],
                     }
                 )
@@ -1210,12 +1419,12 @@ def _single_cp_solve(
         cap_su = m.get("maxSundaysMonth")
         if cap_su is not None and isinstance(cap_su, (int, float)):
             csu = int(cap_su)
-            tsu = new_suns[mi] + fixed_suns[mi]
-            if tsu > csu:
+            tf = new_festive_days[mi]
+            if tf > csu:
                 alerts.append(
                     {
                         "type": "CONTRACT_CAP_SUN",
-                        "message": f"{_member_label(mi)}: {tsu} domeniche lavorate (tetto {csu}).",
+                        "message": f"{_member_label(mi)}: {tf} festivi lavorati (tetto {csu}).",
                         "memberId": mem_id_at[mi],
                     }
                 )
@@ -1289,7 +1498,14 @@ def _single_cp_solve(
         if alerts
         else "Piano calcolato senza compromessi sui vincoli pesati."
     )
-    return {"status": st_name, "calendar": cal, "assignments": assignments_out, "alerts": alerts, "message": summary}
+    return {
+        "status": st_name,
+        "calendar": cal,
+        "assignments": assignments_out,
+        "alerts": alerts,
+        "message": summary,
+        "solveMeta": solve_meta,
+    }
 
 
 def _calendar_out(schedule_id: str, assignments: list[dict[str, str]], solver_status: str) -> dict[str, Any]:
@@ -1396,7 +1612,7 @@ def solve_scheduling_problem(payload: dict[str, Any]) -> dict[str, Any]:
             trial["restAfterNight"] = patch["restAfterNight"]
         # Rispetta timeout client (~120s): passate brevi tranne la base più lunga.
         if label == "BASE":
-            tl = 40.0
+            tl = 75.0
         else:
             tl = 7.0
 
@@ -1408,6 +1624,11 @@ def solve_scheduling_problem(payload: dict[str, Any]) -> dict[str, Any]:
         )
         st = res.get("status")
         if st in ("OPTIMAL", "FEASIBLE"):
+            meta = res.get("solveMeta")
+            if isinstance(meta, dict):
+                res["solveMeta"] = {**meta, "passLabel": label}
+            else:
+                res["solveMeta"] = {"passLabel": label}
             return res
         if st == "MODEL_INVALID":
             return res

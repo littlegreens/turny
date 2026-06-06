@@ -132,7 +132,7 @@ export default async function ScheduleReportPage({ params }: Props) {
                 shiftCount: r.shiftCount,
                 nightCount: r.nightCount,
                 satCount: r.satCount,
-                sunCount: r.sunCount,
+                festiveCount: r.festiveCount,
                 hoursTotal: r.hoursTotal,
                 contractMode: r.contractMode,
               }))}
@@ -175,7 +175,7 @@ export default async function ScheduleReportPage({ params }: Props) {
                     <th className="text-end">Turni</th>
                     <th className="text-end">Notti</th>
                     <th className="text-end">Sabati</th>
-                    <th className="text-end">Domeniche</th>
+                    <th className="text-end">Festivi</th>
                     <th className="text-end">Ore</th>
                     <th>Contratto</th>
                   </tr>
@@ -189,7 +189,7 @@ export default async function ScheduleReportPage({ params }: Props) {
                       <td className="text-end">{r.shiftCount}</td>
                       <td className="text-end">{r.nightCount > 0 ? r.nightCount : "—"}</td>
                       <td className="text-end">{r.satCount > 0 ? r.satCount : "—"}</td>
-                      <td className="text-end">{r.sunCount > 0 ? r.sunCount : "—"}</td>
+                      <td className="text-end">{r.festiveCount > 0 ? r.festiveCount : "—"}</td>
                       <td className="text-end">{r.hoursTotal}</td>
                       <td className="small">{r.contractMode}</td>
                     </tr>

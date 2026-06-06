@@ -100,7 +100,7 @@ export function ScheduleMonthlyConstraintsPanel({ scheduleId, year, month, membe
                     <p className="small text-secondary mb-0">{formatDate(c.date)}{c.note ? ` - ${c.note}` : ""}</p>
                   </div>
                   {canEdit ? (
-                    <button className="btn btn-sm btn-outline-danger" onClick={() => setDeleteId(c.id)}>Rimuovi</button>
+                    <button className="btn btn-sm btn-danger turny-btn-action" onClick={() => setDeleteId(c.id)}>Rimuovi</button>
                   ) : null}
                 </li>
               ))}

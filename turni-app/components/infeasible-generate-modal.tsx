@@ -93,12 +93,6 @@ export function InfeasibleGenerateModal({
                     </div>
                     <div className="col-6 col-md-4">
                       <div className="border rounded p-2 h-100 bg-light">
-                        <div className="text-secondary">Jolly</div>
-                        <div className="fw-bold">{hints.stats.jollyCount}</div>
-                      </div>
-                    </div>
-                    <div className="col-6 col-md-4">
-                      <div className="border rounded p-2 h-100 bg-light">
                         <div className="text-secondary">Somma max turni/mese</div>
                         <div className="fw-bold">{hints.stats.sumContractMaxShifts ?? "—"}</div>
                       </div>
@@ -146,7 +140,7 @@ export function InfeasibleGenerateModal({
                         Quando una generazione <strong>riesce</strong> ma qualcuno supera il massimale mensile indicato in scheda,
                         il piano viene comunque salvato e il <strong>report / avvisi</strong> del turno lo segnalano: il
                         responsabile decide se accettare o correggere a mano. In caso di generazione impossibile, aumentare il
-                        tetto sulla scheda persona (o alleggerire vincoli) è spesso la leva giusta — non serve usare i jolly.
+                        tetto sulla scheda persona (o alleggerire vincoli) è spesso la leva giusta.
                       </p>
                     </div>
                   </div>

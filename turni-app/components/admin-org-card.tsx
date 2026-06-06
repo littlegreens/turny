@@ -107,9 +107,9 @@ export function AdminOrgCard({ org }: Props) {
                     </select>
                   </div>
                 </div>
-                <div className="modal-footer">
+                <div className="modal-footer turny-modal-footer-split">
                   <button className="btn btn-outline-secondary" onClick={() => setOpen(false)} disabled={loading}>Annulla</button>
-                  <button className="btn btn-success" onClick={() => void save()} disabled={loading}>
+                  <button className="btn btn-success turny-btn-action" onClick={() => void save()} disabled={loading}>
                     {loading ? "Salvataggio..." : "Salva"}
                   </button>
                 </div>

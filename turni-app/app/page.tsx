@@ -5,6 +5,7 @@ import { ContactLeadForm } from "@/components/contact-lead-form";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { isSuperAdminEmail } from "@/lib/super-admin";
+import { PUBLIC_REGISTER_ENABLED } from "@/lib/feature-flags";
 
 export default async function Home() {
   const session = await getServerSession(authOptions);
@@ -52,9 +53,11 @@ export default async function Home() {
                 </Link>
               ) : (
                 <>
-                  <Link href="/register" className="btn btn-outline-light btn-sm px-3">
-                    Registrati
-                  </Link>
+                  {PUBLIC_REGISTER_ENABLED ? (
+                    <Link href="/register" className="btn btn-outline-light btn-sm px-3">
+                      Registrati
+                    </Link>
+                  ) : null}
                   <Link href="/login" className="btn btn-light btn-sm text-success fw-semibold px-3">
                     Login
                   </Link>

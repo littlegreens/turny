@@ -7,6 +7,7 @@ import type { HolidayOverrideDraft, HolidayOverrideMode } from "@/lib/holiday-ov
 
 const MODE_LABELS: Record<HolidayOverrideMode, string> = {
   CLOSED: "Chiuso — nessun turno",
+  FESTIVO: "Festivo — turni attivi (solo chi «evita festivi» resta fuori)",
   SUNDAY_LIKE: "Solo fasce selezionate",
   CUSTOM: "Solo fasce selezionate",
 };
@@ -153,7 +154,7 @@ export function CalendarHolidayOverridesPanel({ calId, canEdit, initialCalendarR
                   <button type="button" className="btn btn-sm btn-outline-secondary" disabled={loading} onClick={() => openEdit(r)}>
                     Modifica
                   </button>
-                  <button type="button" className="btn btn-sm btn-outline-danger" disabled={loading} onClick={() => setDeleteId(r.id)}>
+                  <button type="button" className="btn btn-sm btn-danger turny-btn-action" disabled={loading} onClick={() => setDeleteId(r.id)}>
                     Elimina
                   </button>
                 </div>
@@ -210,13 +211,13 @@ export function CalendarHolidayOverridesPanel({ calId, canEdit, initialCalendarR
                     </div>
                   ) : null}
                 </div>
-                <div className="modal-footer py-2">
-                  <button type="button" className="btn btn-outline-secondary btn-sm" onClick={() => setModalOpen(false)}>
+                <div className="modal-footer turny-modal-footer-split">
+                  <button type="button" className="btn btn-outline-secondary" onClick={() => setModalOpen(false)}>
                     Annulla
                   </button>
                   <button
                     type="button"
-                    className="btn btn-success btn-sm"
+                    className="btn btn-success turny-btn-action"
                     disabled={
                       loading ||
                       !canEdit ||
@@ -251,13 +252,13 @@ export function CalendarHolidayOverridesPanel({ calId, canEdit, initialCalendarR
           <div className="modal-dialog modal-dialog-centered">
             <div className="modal-content turny-modal">
               <div className="modal-body">Rimuovere questa data eccezionale?</div>
-              <div className="modal-footer py-2">
-                <button type="button" className="btn btn-outline-secondary btn-sm" onClick={() => setDeleteId(null)}>
+              <div className="modal-footer turny-modal-footer-split">
+                <button type="button" className="btn btn-outline-secondary" onClick={() => setDeleteId(null)}>
                   Annulla
                 </button>
                 <button
                   type="button"
-                  className="btn btn-danger btn-sm"
+                  className="btn btn-danger turny-btn-action"
                   disabled={loading}
                   onClick={() => {
                     const id = deleteId;

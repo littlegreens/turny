@@ -7,12 +7,15 @@ export const SOLVER_RELAXATION_ALERT_TYPES = new Set([
   "COVERAGE_SHORTFALL",
   "ROLE_COVERAGE_SHORTFALL",
   "ROLE_COVERAGE_BYPASSED",
+  "ROLE_COVERAGE_IMPOSSIBLE",
   "RELAXATION_APPLIED",
   "CONTRACT_CAP_MONTH",
   "CONTRACT_CAP_NIGHTS",
   "CONTRACT_CAP_SAT",
   "CONTRACT_CAP_SUN",
   "CONTRACT_CAP_WEEKEND",
+  "EXTRA_AVAIL_OVER_CAP",
+  "EXTRA_AVAIL_UNDER_CAP",
   "REQ_DATE_MISS",
   "REQ_SHIFT_MISS",
 ]);
@@ -35,6 +38,7 @@ export function buildSolverRelaxationCellHighlights(alerts: unknown[]) {
       (t === "COVERAGE_SHORTFALL" ||
         t === "ROLE_COVERAGE_SHORTFALL" ||
         t === "ROLE_COVERAGE_BYPASSED" ||
+        t === "ROLE_COVERAGE_IMPOSSIBLE" ||
         t === "ALWAYS_WITH_RELAXED" ||
         t === "NEVER_WITH_RELAXED") &&
       date &&
@@ -104,6 +108,8 @@ export function solverRelaxationShortTitle(type: string): string {
       return "Composizione ruoli non rispettata";
     case "ROLE_COVERAGE_BYPASSED":
       return "Composizione ruoli (cella piena manuale)";
+    case "ROLE_COVERAGE_IMPOSSIBLE":
+      return "Composizione ruoli impossibile (anagrafica)";
     case "RELAXATION_APPLIED":
       return "Passaggio automatico di sblocco vincoli";
     case "CONTRACT_CAP_MONTH":
@@ -113,9 +119,13 @@ export function solverRelaxationShortTitle(type: string): string {
     case "CONTRACT_CAP_SAT":
       return "Superamento tetto sabati";
     case "CONTRACT_CAP_SUN":
-      return "Superamento tetto domeniche";
+      return "Superamento tetto festivi";
     case "CONTRACT_CAP_WEEKEND":
       return "Superamento tetto giorni weekend";
+    case "EXTRA_AVAIL_OVER_CAP":
+      return "Extra disponibilità oltre tetto (copertura buchi)";
+    case "EXTRA_AVAIL_UNDER_CAP":
+      return "Extra disponibilità sotto tetto";
     case "REQ_DATE_MISS":
       return "Obbligo «lavora questo giorno» non nel piano";
     case "REQ_SHIFT_MISS":

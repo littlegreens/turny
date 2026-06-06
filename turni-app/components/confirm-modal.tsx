@@ -51,11 +51,11 @@ export function ConfirmModal({
             <div className="modal-body">
               <p className="mb-0">{message}</p>
             </div>
-            <div className="modal-footer">
-              <button type="button" className="btn btn-outline-secondary btn-sm" onClick={onCancel} disabled={loading}>
+            <div className="modal-footer turny-modal-footer-split">
+              <button type="button" className="btn btn-outline-secondary turny-btn-action" onClick={onCancel} disabled={loading}>
                 {cancelLabel}
               </button>
-              <button type="button" className={`btn btn-${confirmVariant} btn-sm`} onClick={onConfirm} disabled={loading}>
+              <button type="button" className={`btn btn-${confirmVariant} turny-btn-action`} onClick={onConfirm} disabled={loading}>
                 {loading ? "Attendere..." : confirmLabel}
               </button>
             </div>

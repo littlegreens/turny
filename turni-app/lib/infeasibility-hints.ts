@@ -8,7 +8,6 @@ export type InfeasibilityHints = {
     slotsToCover: number;
     assignmentsAlreadyFixed: number;
     teamMembers: number;
-    jollyCount: number;
     /** Somma dei massimali turni/mese; null se almeno uno è illimitato. */
     sumContractMaxShifts: number | null;
     /** Massimo minStaff tra i tipi turno (serve confronto con |team|). */
@@ -37,7 +36,6 @@ export function buildInfeasibilityHints(input: {
   shiftTypes: Array<{ id: string; name: string; minStaff: number; activeWeekdays: number[] }>;
   members: Array<{
     id: string;
-    isJolly: boolean;
     contractShiftsMonth: number | null;
     user: { firstName: string | null; lastName: string | null; email: string | null };
   }>;
@@ -74,7 +72,6 @@ export function buildInfeasibilityHints(input: {
   }
 
   const teamMembers = input.members.length;
-  const jollyCount = input.members.filter((m) => m.isJolly).length;
   let sumContractMaxShifts: number | null = 0;
   for (const m of input.members) {
     if (m.contractShiftsMonth == null) {
@@ -164,7 +161,6 @@ export function buildInfeasibilityHints(input: {
       slotsToCover,
       assignmentsAlreadyFixed: input.fixedAssignments.length,
       teamMembers,
-      jollyCount,
       sumContractMaxShifts,
       maxMinStaffOnSingleSlot,
       monthlyUnavailable,

@@ -13,6 +13,14 @@ import { resolveMemberRowColor } from "@/lib/member-row-color";
 import { parseHolidayOverrides } from "@/lib/holiday-overrides";
 import { buildScheduleReport } from "@/lib/schedule-report";
 import { shiftIsNight } from "@/lib/scheduler-problem";
+import { buildRecurringBlockedShiftKeys } from "@/lib/weekly-unavailability";
+import { parseProfessionalRoles } from "@/lib/professional-roles";
+import { roleSlotsForShiftType } from "@/lib/role-composition";
+import {
+  extraPersonById,
+  parseExtraPersonIdFromNote,
+  parseScheduleExtraPeople,
+} from "@/lib/schedule-extra-people";
 
 type Props = {
   params: Promise<{ orgSlug: string; calId: string; schedId: string }>;
@@ -63,7 +71,7 @@ export default async function ScheduleGridPage({ params, searchParams }: Props) 
         constraints: {
           where: {
             OR: [
-              { type: { in: ["UNAVAILABLE_WEEKDAY", "MAX_SHIFTS_WEEK", "UNAVAILABLE_SHIFT"] } },
+              { type: { in: ["UNAVAILABLE_WEEKDAY", "UNAVAILABLE_WEEKDAY_SHIFT", "MAX_SHIFTS_WEEK", "UNAVAILABLE_SHIFT"] } },
               {
                 type: "CUSTOM",
                 note: {
@@ -74,6 +82,7 @@ export default async function ScheduleGridPage({ params, searchParams }: Props) 
                     "TARGET_NIGHTS_MONTH",
                     "TARGET_SATURDAYS_MONTH",
                     "TARGET_SUNDAYS_MONTH",
+                    "NO_HOLIDAY_WORK",
                   ],
                 },
               },
@@ -113,6 +122,12 @@ export default async function ScheduleGridPage({ params, searchParams }: Props) 
     }
     return false;
   });
+
+  const extraAvailabilityByMemberId = new Map<string, boolean>();
+  for (const c of monthlyConstraints) {
+    if (String(c.type) !== "CUSTOM" || (c.note ?? "").trim() !== "EXTRA_AVAILABILITY") continue;
+    extraAvailabilityByMemberId.set(c.memberId, true);
+  }
 
   const userIds = [...new Set(members.map((m) => m.userId))];
   const orgMemberColors = await fetchOrgMemberDisplayColors(schedule.calendar.orgId, userIds);
@@ -164,9 +179,21 @@ export default async function ScheduleGridPage({ params, searchParams }: Props) 
     holidayOverrides: holidayOverridesMerged as any,
   });
 
-  const generationLog = schedule.generationLog as { lastSolverAlerts?: unknown[] } | null | undefined;
+  const generationLog = schedule.generationLog as { lastSolverAlerts?: unknown[]; lastAutoGenerateAt?: string } | null | undefined;
   const fromLog = generationLog?.lastSolverAlerts;
   const initialSolverAlerts = Array.isArray(fromLog) ? fromLog : [];
+  const lastAutoGenerateAt =
+    typeof generationLog?.lastAutoGenerateAt === "string" ? generationLog.lastAutoGenerateAt : null;
+
+  const extraPeople = parseScheduleExtraPeople(schedule.rules);
+  const professionalRoleSuggestions = [
+    ...new Set([
+      ...members.flatMap((m) => parseProfessionalRoles(m.user.professionalRole || "")),
+      ...shiftTypes.flatMap((st) =>
+        roleSlotsForShiftType(st.minStaff, st.rules).filter((s): s is string => Boolean(s && s.trim())),
+      ),
+    ]),
+  ].sort((a, b) => a.localeCompare(b, "it", { sensitivity: "base" }));
 
   return (
     <>
@@ -200,6 +227,8 @@ export default async function ScheduleGridPage({ params, searchParams }: Props) 
         endDate={periodMeta.endDate}
         canEdit={canEdit}
         scheduleRules={(schedule.rules ?? null) as unknown}
+        extraPeople={extraPeople}
+        professionalRoleSuggestions={professionalRoleSuggestions}
         holidayOverrides={holidayOverridesMerged as any}
         shiftTypes={shiftTypes.map((st) => ({
           id: st.id,
@@ -210,12 +239,18 @@ export default async function ScheduleGridPage({ params, searchParams }: Props) 
           minStaff: st.minStaff,
           maxStaff: st.maxStaff,
           activeWeekdays: st.activeWeekdays,
+          rules: st.rules,
         }))}
         members={members.map((m) => {
           const calColor =
             (m.constraints.find((c) => c.type === "CUSTOM" && c.note === "MEMBER_COLOR")?.value as { color?: string } | undefined)?.color ??
             null;
           const orgRow = orgColorByUser.get(m.userId);
+          const orgDisplayColor = resolveMemberRowColor({
+            calendarConstraintColor: null,
+            orgDefaultColor: orgRow?.defaultDisplayColor ?? null,
+            orgUseDefaultInCalendars: orgRow?.useDisplayColorInCalendars ?? true,
+          });
           const memberColor = resolveMemberRowColor({
             calendarConstraintColor: calColor,
             orgDefaultColor: orgRow?.defaultDisplayColor ?? null,
@@ -225,6 +260,7 @@ export default async function ScheduleGridPage({ params, searchParams }: Props) 
           const cfgNights = m.constraints.find((c) => c.type === "CUSTOM" && c.note === "TARGET_NIGHTS_MONTH");
           const cfgSats = m.constraints.find((c) => c.type === "CUSTOM" && c.note === "TARGET_SATURDAYS_MONTH");
           const cfgSuns = m.constraints.find((c) => c.type === "CUSTOM" && c.note === "TARGET_SUNDAYS_MONTH");
+          const noHolidayWork = m.constraints.some((c) => c.type === "CUSTOM" && c.note === "NO_HOLIDAY_WORK");
           const cfgVac = m.constraints.find((c) => c.type === "CUSTOM" && c.note === "VACATION_DAYS_PERIOD");
           const vacRaw = (cfgVac?.value as { days?: number } | undefined)?.days;
           const vacationDays = typeof vacRaw === "number" && vacRaw >= 0 ? Math.floor(vacRaw) : 0;
@@ -251,29 +287,43 @@ export default async function ScheduleGridPage({ params, searchParams }: Props) 
               typeof (cfgSuns?.value as { sundays?: number } | undefined)?.sundays === "number"
                 ? (cfgSuns!.value as { sundays: number }).sundays
                 : null,
-            baseUnavailableWeekdays: m.constraints
-              .filter((c) => c.type === "UNAVAILABLE_WEEKDAY")
-              .map((c) => Number((c.value as { weekday?: number }).weekday))
-              .filter((n) => !Number.isNaN(n)),
-            baseUnavailableShiftTypeIds: m.constraints
-              .filter((c) => c.type === "UNAVAILABLE_SHIFT")
-              .map((c) => String((c.value as { shiftTypeId?: string }).shiftTypeId ?? ""))
-              .filter(Boolean),
+            noHolidayWork,
+            baseBlockedShiftKeys: [
+              ...buildRecurringBlockedShiftKeys(
+                m.constraints,
+                shiftTypes.map((st) => ({
+                  id: st.id,
+                  name: st.name,
+                  startTime: st.startTime,
+                  activeWeekdays: st.activeWeekdays,
+                })),
+              ),
+            ],
             memberColor,
+            orgDisplayColor,
             calendarColorOverride: calColor,
+            extraAvailability: extraAvailabilityByMemberId.get(m.id) ?? false,
           };
         })}
         assignments={assignments.map((a) => {
           const guest = !a.memberId;
+          const extraPersonId = guest ? parseExtraPersonIdFromNote(a.note) : null;
+          const linkedExtra = extraPersonById(extraPeople, extraPersonId);
+          const guestDisplayLabel = linkedExtra?.label ?? a.guestLabel?.trim() ?? "Extra";
           const memberLabel = a.member
             ? `${`${a.member.user.firstName} ${a.member.user.lastName}`.trim() || a.member.user.email}`
-            : (a.guestLabel?.trim() || "Extra");
+            : guestDisplayLabel;
           return {
             id: a.id,
             memberId: a.memberId ?? "",
             isGuest: guest,
             ...(guest
-              ? { guestLabel: a.guestLabel ?? undefined, guestColor: a.guestColor ?? undefined }
+              ? {
+                  guestLabel: guestDisplayLabel,
+                  guestColor: linkedExtra?.color ?? a.guestColor ?? undefined,
+                  guestExtraPersonId: extraPersonId ?? undefined,
+                  guestProfessionalRole: linkedExtra?.professionalRole ?? undefined,
+                }
               : {}),
             shiftTypeId: a.shiftTypeId,
             date: a.date.toISOString().slice(0, 10),
@@ -307,6 +357,7 @@ export default async function ScheduleGridPage({ params, searchParams }: Props) 
         })}
         reportSummary={report}
         initialSolverAlerts={initialSolverAlerts}
+        lastAutoGenerateAt={lastAutoGenerateAt}
       />
 
       <div className="mt-4">

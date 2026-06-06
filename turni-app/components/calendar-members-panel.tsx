@@ -228,7 +228,7 @@ export function CalendarMembersPanel({ calId, canEdit, assigned, available }: Pr
                     </div>
                   ) : null}
                 </div>
-                <div className="modal-footer d-flex justify-content-between">
+                <div className="modal-footer turny-modal-footer-split">
                   <button type="button" className="btn btn-outline-secondary" onClick={() => setAddModalOpen(false)} disabled={loading}>
                     Annulla
                   </button>

@@ -5,7 +5,7 @@ type RowCompact = {
   shiftCount: number;
   nightCount?: number;
   satCount?: number;
-  sunCount?: number;
+  festiveCount?: number;
   hoursTotal: number;
   freeDays: number;
   freeWeekend: number;
@@ -18,7 +18,7 @@ type RowFull = {
   shiftCount: number;
   nightCount?: number;
   satCount?: number;
-  sunCount?: number;
+  festiveCount?: number;
   hoursTotal: number;
   contractMode: string;
 };
@@ -45,21 +45,21 @@ export function ScheduleReportCsvButton({ filename, rows }: Props) {
     let lines: string[];
     const r0 = rows[0];
     if (r0 && isCompactRow(r0)) {
-      header = ["Nome", "Turni", "Notti", "Sabati", "Domeniche", "Ore", "Giorni_liberi"];
+      header = ["Nome", "Turni", "Notti", "Sabati", "Festivi", "Ore", "Giorni_liberi"];
       lines = [
         header.join(","),
         ...(rows as RowCompact[]).map((r) =>
-          [r.label, String(r.shiftCount), String(r.nightCount ?? 0), String(r.satCount ?? 0), String(r.sunCount ?? 0), String(r.hoursTotal), String(r.freeDays)]
+          [r.label, String(r.shiftCount), String(r.nightCount ?? 0), String(r.satCount ?? 0), String(r.festiveCount ?? 0), String(r.hoursTotal), String(r.freeDays)]
             .map((c) => csvEscape(String(c)))
             .join(","),
         ),
       ];
     } else {
-      header = ["Nome", "Email", "Ruolo professionale", "Turni", "Notti", "Sabati", "Domeniche", "Ore", "Modalita contratto"];
+      header = ["Nome", "Email", "Ruolo professionale", "Turni", "Notti", "Sabati", "Festivi", "Ore", "Modalita contratto"];
       lines = [
         header.join(","),
         ...(rows as RowFull[]).map((r) =>
-          [r.label, r.email, r.professionalRole, String(r.shiftCount), String(r.nightCount ?? 0), String(r.satCount ?? 0), String(r.sunCount ?? 0), String(r.hoursTotal), r.contractMode]
+          [r.label, r.email, r.professionalRole, String(r.shiftCount), String(r.nightCount ?? 0), String(r.satCount ?? 0), String(r.festiveCount ?? 0), String(r.hoursTotal), r.contractMode]
             .map((c) => csvEscape(String(c)))
             .join(","),
         ),

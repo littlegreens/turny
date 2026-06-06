@@ -6,6 +6,8 @@ import { authOptions } from "@/lib/auth";
 import { resolveCanonicalProfessionalRole } from "@/lib/org-professional-roles";
 import { getPrimaryRole, hasAnyRole, normalizeRoles } from "@/lib/org-roles";
 import { prisma } from "@/lib/prisma";
+import { BASE_WEEKLY_UNAVAIL_NOTE } from "@/lib/weekly-unavailability";
+import { NO_HOLIDAY_WORK_NOTE } from "@/lib/holiday-overrides";
 
 const updateRoleSchema = z.object({
   firstName: z.string().trim().min(1, "Nome obbligatorio"),
@@ -20,13 +22,20 @@ const updateRoleSchema = z.object({
     .array(
       z.object({
         calendarMemberId: z.string().min(1),
-        avoidShiftTypeIds: z.array(z.string().min(1)).default([]),
+        weeklyUnavailability: z
+          .array(
+            z.object({
+              weekday: z.number().int().min(0).max(6),
+              slot: z.enum(["mattina", "pomeriggio", "notte", "turnoUnico"]),
+            }),
+          )
+          .default([]),
         targetShiftsMonth: z.number().int().min(0).max(200).nullable().optional(),
         targetHoursMonth: z.number().int().min(0).max(400).nullable().optional(),
         targetNightsMonth: z.number().int().min(0).max(31).nullable().optional(),
         targetSaturdaysMonth: z.number().int().min(0).max(8).nullable().optional(),
         targetSundaysMonth: z.number().int().min(0).max(8).nullable().optional(),
-        avoidWeekdays: z.array(z.number().int().min(0).max(6)).default([]),
+        noHolidayWork: z.boolean().optional(),
       }),
     )
     .default([]),
@@ -155,39 +164,32 @@ export async function PATCH(request: Request, { params }: Params) {
           where: {
             memberId: pref.calendarMemberId,
             OR: [
-              { type: "UNAVAILABLE_SHIFT", weight: "SOFT" },
-              { type: "UNAVAILABLE_WEEKDAY", weight: "SOFT" },
+              { type: "UNAVAILABLE_SHIFT" },
+              { type: "UNAVAILABLE_WEEKDAY" },
+              { type: "UNAVAILABLE_WEEKDAY_SHIFT" },
               { type: "CUSTOM", note: "TARGET_SHIFTS_WEEK" },
               { type: "CUSTOM", note: "TARGET_SHIFTS_MONTH" },
               { type: "CUSTOM", weight: "SOFT", note: "TARGET_HOURS_MONTH" },
               { type: "CUSTOM", weight: "SOFT", note: "TARGET_NIGHTS_MONTH" },
               { type: "CUSTOM", weight: "SOFT", note: "TARGET_SATURDAYS_MONTH" },
               { type: "CUSTOM", weight: "SOFT", note: "TARGET_SUNDAYS_MONTH" },
+              { type: "CUSTOM", note: NO_HOLIDAY_WORK_NOTE },
             ],
           },
         });
 
-        for (const shiftTypeId of [...new Set(pref.avoidShiftTypeIds)]) {
-          await tx.constraint.create({
-            data: {
-              memberId: pref.calendarMemberId,
-              type: "UNAVAILABLE_SHIFT",
-              weight: "SOFT",
-              value: { shiftTypeId },
-              note: "BASE_AVOID_SHIFT",
-              createdBy: session.user.id,
-            },
-          });
+        const weeklyCells = new Map<string, { weekday: number; slot: string }>();
+        for (const cell of pref.weeklyUnavailability) {
+          weeklyCells.set(`${cell.weekday}|${cell.slot}`, cell);
         }
-
-        for (const weekday of [...new Set(pref.avoidWeekdays)]) {
+        for (const cell of weeklyCells.values()) {
           await tx.constraint.create({
             data: {
               memberId: pref.calendarMemberId,
-              type: "UNAVAILABLE_WEEKDAY",
-              weight: "SOFT",
-              value: { weekday },
-              note: "BASE_AVOID_WEEKDAY",
+              type: "UNAVAILABLE_WEEKDAY_SHIFT",
+              weight: "HARD",
+              value: { weekday: cell.weekday, slot: cell.slot },
+              note: BASE_WEEKLY_UNAVAIL_NOTE,
               createdBy: session.user.id,
             },
           });
@@ -251,6 +253,19 @@ export async function PATCH(request: Request, { params }: Params) {
               weight: "SOFT",
               value: { kind: "TARGET_SUNDAYS_MONTH", sundays: pref.targetSundaysMonth },
               note: "TARGET_SUNDAYS_MONTH",
+              createdBy: session.user.id,
+            },
+          });
+        }
+
+        if (pref.noHolidayWork) {
+          await tx.constraint.create({
+            data: {
+              memberId: pref.calendarMemberId,
+              type: "CUSTOM",
+              weight: "HARD",
+              value: { enabled: true },
+              note: NO_HOLIDAY_WORK_NOTE,
               createdBy: session.user.id,
             },
           });

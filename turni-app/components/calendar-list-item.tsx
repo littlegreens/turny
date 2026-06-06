@@ -104,7 +104,7 @@ export function CalendarListItem({
             <button className="btn btn-sm btn-outline-secondary" onClick={() => setEditOpen(true)}>
               Modifica
             </button>
-            <button className="btn btn-sm btn-outline-danger" onClick={() => setDeleteOpen(true)}>
+            <button className="btn btn-sm btn-danger turny-btn-action" onClick={() => setDeleteOpen(true)}>
               Elimina
             </button>
           </>

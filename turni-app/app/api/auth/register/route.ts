@@ -2,6 +2,7 @@ import bcrypt from "bcrypt";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { PUBLIC_REGISTER_ENABLED } from "@/lib/feature-flags";
 import { slugify } from "@/lib/slug";
 
 const registerSchema = z.object({
@@ -30,6 +31,10 @@ async function getUniqueOrgSlug(orgName: string) {
 }
 
 export async function POST(request: Request) {
+  if (!PUBLIC_REGISTER_ENABLED) {
+    return NextResponse.json({ error: "Registrazione pubblica non disponibile" }, { status: 403 });
+  }
+
   try {
     const body = await request.json();
     const parsed = registerSchema.safeParse(body);

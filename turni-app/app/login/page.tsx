@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { Suspense, useState } from "react";
+import { PUBLIC_REGISTER_ENABLED } from "@/lib/feature-flags";
 
 function LoginForm() {
   const router = useRouter();
@@ -93,12 +94,14 @@ function LoginForm() {
         </Link>
       </p>
 
-      <p className="mt-3 text-secondary">
-        Non hai un account?{" "}
-        <Link href="/register" className="link-dark">
-          Registrati
-        </Link>
-      </p>
+      {PUBLIC_REGISTER_ENABLED ? (
+        <p className="mt-3 text-secondary">
+          Non hai un account?{" "}
+          <Link href="/register" className="link-dark">
+            Registrati
+          </Link>
+        </p>
+      ) : null}
     </>
   );
 }

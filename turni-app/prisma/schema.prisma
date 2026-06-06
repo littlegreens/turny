@@ -21,6 +21,8 @@ model Organization {
   plan                 Plan     @default(FREE)
   stripeCustomerId     String?
   stripeSubscriptionId String?
+  /// Ruoli professionali definiti a livello organizzazione (serializzati come su User.professionalRole).
+  professionalRoleCatalog String @default("")
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
@@ -191,6 +193,8 @@ enum ConstraintType {
   UNAVAILABLE_DATERANGE
   UNAVAILABLE_WEEKDAY
   UNAVAILABLE_SHIFT
+  /** Indisponibilità ricorrente: giorno settimana + fascia (mattina/pomeriggio/notte/turnoUnico). */
+  UNAVAILABLE_WEEKDAY_SHIFT
   /** Periodo: persona deve essere assegnata quel giorno (≥1 turno). */
   REQUIRED_DATE
   /** Periodo: persona deve essere assegnata a quel tipo turno in quella data. */

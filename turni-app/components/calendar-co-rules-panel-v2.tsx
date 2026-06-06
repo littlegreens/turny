@@ -348,7 +348,7 @@ export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, m
                   </button>
                   <button
                     type="button"
-                    className="btn btn-sm btn-outline-danger"
+                    className="btn btn-sm btn-danger turny-btn-action"
                     onClick={() => setDeleteTargetId(r.id)}
                     disabled={!canEdit || loading}
                   >
@@ -472,7 +472,7 @@ export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, m
                   </div>
                 </div>
 
-                <div className="modal-footer d-flex justify-content-between">
+                <div className="modal-footer turny-modal-footer-split">
                   <button type="button" className="btn btn-outline-secondary" onClick={() => setModalOpen(false)} disabled={loading}>
                     Annulla
                   </button>
@@ -583,7 +583,7 @@ export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, m
                   </button>
                   <button
                     type="button"
-                    className="btn btn-sm btn-outline-danger"
+                    className="btn btn-sm btn-danger turny-btn-action"
                     disabled={!canEdit || loading}
                     onClick={() => setDeleteDowTargetId(r.id)}
                   >
@@ -682,7 +682,7 @@ export function CalendarCoRulesPanelV2({ calId, canEdit, initialCalendarRules, m
                   </div>
                 </div>
               </div>
-              <div className="modal-footer d-flex justify-content-between">
+              <div className="modal-footer turny-modal-footer-split">
                 <button type="button" className="btn btn-outline-secondary" onClick={() => setDowModalOpen(false)} disabled={loading}>
                   Annulla
                 </button>

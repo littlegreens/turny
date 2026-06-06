@@ -9,10 +9,13 @@ type Props = {
   colors?: string[];
   disabled?: boolean;
   label?: string;
-  /** Mostra cerchio bianco con barra: colore non impostato sul calendario (vale impostazioni membro). */
   inheritOption?: boolean;
   inheritSelected?: boolean;
   onSelectInherit?: () => void;
+  /** Colore anagrafica da mostrare quando inheritSelected (al posto della scritta «default»). */
+  inheritDisplayColor?: string;
+  /** Etichetta e trigger sulla stessa riga. */
+  inlineLabel?: boolean;
 };
 
 export const PERSON_PALETTE_COLORS = [
@@ -85,7 +88,7 @@ function InheritSwatchPreview({ className }: { className?: string }) {
         backgroundImage: "linear-gradient(135deg, transparent 44%, #94a3b8 44%, #94a3b8 56%, transparent 56%)",
         flexShrink: 0,
       }}
-      title="Default organizzazione"
+      title="Colore da anagrafica"
     />
   );
 }
@@ -95,22 +98,25 @@ export function ColorPalettePicker({
   onChange,
   colors = PERSON_PALETTE_COLORS,
   disabled = false,
-  label = "Colore",
+  label,
   inheritOption = false,
   inheritSelected = false,
   onSelectInherit,
+  inheritDisplayColor = "#3B8BD4",
+  inlineLabel = false,
 }: Props) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
-  const pickerHex = inheritSelected ? "#FFFFFF" : normalizeHex(value) ?? "#FFFFFF";
+  const inheritHex = normalizeHex(inheritDisplayColor) ?? "#3B8BD4";
+  const pickerHex = inheritSelected ? inheritHex : normalizeHex(value) ?? "#FFFFFF";
   const [draftHex, setDraftHex] = useState(pickerHex);
   const [hexInput, setHexInput] = useState(pickerHex.replace("#", ""));
 
   useEffect(() => {
-    const h = inheritSelected ? "#FFFFFF" : normalizeHex(value) ?? "#FFFFFF";
+    const h = inheritSelected ? inheritHex : normalizeHex(value) ?? "#FFFFFF";
     setDraftHex(h);
     setHexInput(h.replace("#", ""));
-  }, [value, inheritSelected]);
+  }, [value, inheritSelected, inheritHex]);
 
   useEffect(() => {
     function onPointerDown(event: MouseEvent) {
@@ -128,36 +134,31 @@ export function ColorPalettePicker({
     onChange(n);
   }
 
-  const displayHex = inheritSelected ? "default" : (normalizeHex(value) ?? value).toUpperCase();
-  const previewBg = inheritSelected ? "#fff" : normalizeHex(value) ?? "#FFFFFF";
+  const displayHex = (inheritSelected ? inheritHex : normalizeHex(value) ?? value).toUpperCase();
+  const previewBg = inheritSelected ? inheritHex : normalizeHex(value) ?? "#FFFFFF";
 
-  return (
-    <div className="position-relative" ref={rootRef}>
-      {label ? <label className="form-label small mb-1 d-block">{label}</label> : null}
-      <button
-        type="button"
-        className="color-picker-trigger-v2"
-        disabled={disabled}
-        onClick={() => setOpen((prev) => !prev)}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-      >
-        {inheritSelected ? (
-          <InheritSwatchPreview />
-        ) : (
-          <span
-            className="color-picker-preview-v2"
-            style={{
-              backgroundColor: previewBg,
-              border: previewBg.toUpperCase() === "#FFFFFF" ? "1px solid #cbd5e1" : "1px solid rgba(0,0,0,0.12)",
-            }}
-          />
-        )}
-        <span className="small fw-semibold text-secondary">{displayHex}</span>
-      </button>
+  const trigger = (
+    <button
+      type="button"
+      className="color-picker-trigger-v2"
+      disabled={disabled}
+      onClick={() => setOpen((prev) => !prev)}
+      aria-haspopup="dialog"
+      aria-expanded={open}
+    >
+      <span
+        className="color-picker-preview-v2"
+        style={{
+          backgroundColor: previewBg,
+          border: previewBg.toUpperCase() === "#FFFFFF" ? "1px solid #cbd5e1" : "1px solid rgba(0,0,0,0.12)",
+        }}
+      />
+      <span className="small fw-semibold text-secondary">{displayHex}</span>
+    </button>
+  );
 
-      {open ? (
-        <div className="color-picker-popover-v2" role="dialog" aria-label="Scegli colore">
+  const popover = open ? (
+    <div className="color-picker-popover-v2" role="dialog" aria-label="Scegli colore">
           <HexColorPicker
             color={draftHex}
             onChange={(hex) => {
@@ -199,10 +200,20 @@ export function ColorPalettePicker({
                   onSelectInherit();
                   setOpen(false);
                 }}
-                aria-label="Usa colore default organizzazione"
-                title="Default org."
+                aria-label="Usa colore da anagrafica"
+                title="Colore anagrafica"
               >
-                <InheritSwatchPreview className="m-0" />
+                <span
+                  className="m-0"
+                  style={{
+                    display: "inline-block",
+                    width: 22,
+                    height: 22,
+                    borderRadius: "50%",
+                    backgroundColor: inheritHex,
+                    border: inheritHex === "#FFFFFF" ? "1px solid #cbd5e1" : "1px solid rgba(0,0,0,0.12)",
+                  }}
+                />
               </button>
             ) : null}
             {colors.map((color) => {
@@ -228,7 +239,25 @@ export function ColorPalettePicker({
             })}
           </div>
         </div>
-      ) : null}
+  ) : null;
+
+  if (inlineLabel) {
+    return (
+      <div className="member-popup-field-row">
+        {label ? <span className="member-popup-field-label">{label}</span> : null}
+        <div className="member-popup-field-control position-relative" ref={rootRef}>
+          {trigger}
+          {popover}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="position-relative" ref={rootRef}>
+      {label?.trim() ? <label className="form-label small mb-1 d-block">{label}</label> : null}
+      {trigger}
+      {popover}
     </div>
   );
 }

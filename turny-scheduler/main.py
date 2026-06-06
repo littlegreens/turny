@@ -54,6 +54,7 @@ def generate(body: GenerateBody):
             "calendar": out.get("calendar"),
             "assignments": out.get("assignments", []),
             "alerts": out.get("alerts") or [],
+            "solveMeta": out.get("solveMeta"),
         }
     return {
         "status": status,

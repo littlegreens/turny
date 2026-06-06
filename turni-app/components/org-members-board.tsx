@@ -25,14 +25,14 @@ type AssignedCalendar = {
   name: string;
   color: string | null;
   calendarMemberId: string;
-  shiftTypes: { id: string; name: string }[];
-  initialAvoidShiftTypeIds: string[];
+  shiftTypes: { id: string; name: string; startTime: string; activeWeekdays: number[] }[];
+  initialWeeklyCellKeys: string[];
   initialTargetShiftsMonth: number | null;
   initialTargetHoursMonth: number | null;
   initialTargetNightsMonth: number | null;
   initialTargetSaturdaysMonth: number | null;
   initialTargetSundaysMonth: number | null;
-  initialAvoidWeekdays: number[];
+  initialNoHolidayWork: boolean;
 };
 
 type Props = {

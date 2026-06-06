@@ -51,6 +51,8 @@ const monthlyConstraintItemSchema = z.union([
 const replaceMonthlyConstraintsSchema = z.object({
   memberId: z.string().min(1),
   items: z.array(monthlyConstraintItemSchema),
+  /** Preferenza solver per questo periodo: persona da usare per coprire buchi (rispettando vincoli HARD). */
+  extraAvailability: z.boolean().optional(),
 });
 
 type Params = {
@@ -219,39 +221,55 @@ export async function PUT(request: Request, { params }: Params) {
     }
   }
 
+  const rows: Prisma.MonthlyConstraintCreateManyInput[] = parsed.data.items.map((item) => {
+    if (item.type === "CUSTOM") {
+      return {
+        scheduleId,
+        memberId: parsed.data.memberId,
+        type: "CUSTOM" as const,
+        weight: "HARD" as const,
+        value:
+          item.note === "GENERIC_DAY_UNLOCK"
+            ? { date: item.date }
+            : { date: item.date, shiftTypeId: item.shiftTypeId },
+        note: item.note,
+      };
+    }
+    return {
+      scheduleId,
+      memberId: parsed.data.memberId,
+      type: item.type,
+      weight: "HARD" as const,
+      value:
+        item.type === "UNAVAILABLE_DATE" || item.type === "REQUIRED_DATE"
+          ? { date: item.date }
+          : { date: item.date, shiftTypeId: item.shiftTypeId },
+      note: null,
+    };
+  });
+  if (parsed.data.extraAvailability) {
+    rows.push({
+      scheduleId,
+      memberId: parsed.data.memberId,
+      type: "CUSTOM",
+      weight: "SOFT",
+      value: { enabled: true },
+      note: "EXTRA_AVAILABILITY",
+    });
+  }
+
   await prisma.$transaction([
     prisma.monthlyConstraint.deleteMany({
       where: { scheduleId, memberId: parsed.data.memberId },
     }),
-    prisma.monthlyConstraint.createMany({
-      data: parsed.data.items.map((item) => {
-        if (item.type === "CUSTOM") {
-          return {
-            scheduleId,
-            memberId: parsed.data.memberId,
-            type: "CUSTOM" as const,
-            weight: "HARD" as const,
-            value:
-              item.note === "GENERIC_DAY_UNLOCK"
-                ? { date: item.date }
-                : { date: item.date, shiftTypeId: item.shiftTypeId },
-            note: item.note,
-          };
-        }
-        return {
-          scheduleId,
-          memberId: parsed.data.memberId,
-          type: item.type,
-          weight: "HARD" as const,
-          value:
-            item.type === "UNAVAILABLE_DATE" || item.type === "REQUIRED_DATE"
-              ? { date: item.date }
-              : { date: item.date, shiftTypeId: item.shiftTypeId },
-          note: null,
-        };
-      }) as unknown as Prisma.MonthlyConstraintCreateManyInput[],
-    }),
+    ...(rows.length
+      ? [
+          prisma.monthlyConstraint.createMany({
+            data: rows,
+          }),
+        ]
+      : []),
   ]);
 
-  return NextResponse.json({ ok: true, count: parsed.data.items.length });
+  return NextResponse.json({ ok: true, count: rows.length });
 }

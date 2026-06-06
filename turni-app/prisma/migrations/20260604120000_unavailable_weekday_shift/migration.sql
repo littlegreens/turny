@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "ConstraintType" ADD VALUE 'UNAVAILABLE_WEEKDAY_SHIFT';

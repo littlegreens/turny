@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { useState } from "react";
+import { PUBLIC_REGISTER_ENABLED } from "@/lib/feature-flags";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -53,6 +54,20 @@ export default function RegisterPage() {
 
     router.push("/dashboard");
     router.refresh();
+  }
+
+  if (!PUBLIC_REGISTER_ENABLED) {
+    return (
+      <main className="container py-5 d-flex flex-column justify-content-center" style={{ minHeight: "100vh", maxWidth: 560 }}>
+        <h1 className="display-6">Registrazione non disponibile</h1>
+        <p className="text-secondary">
+          L&apos;apertura di nuovi account è gestita dall&apos;amministratore. Se hai già le credenziali, accedi.
+        </p>
+        <Link href="/login" className="btn btn-success align-self-start">
+          Vai al login
+        </Link>
+      </main>
+    );
   }
 
   return (

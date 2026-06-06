@@ -1,6 +1,6 @@
 /** Calcoli riepilogo schedule (Passo 3 brain): ore, copertura min/max staff. */
 
-import { isShiftActiveOnDate, type HolidayOverrideDraft } from "./holiday-overrides";
+import { isShiftActiveOnDate, isFestivoOverride, type HolidayOverrideDraft } from "./holiday-overrides";
 
 export type ShiftTypeForReport = {
   id: string;
@@ -39,7 +39,8 @@ export type MemberReportRow = {
   shiftCount: number;
   nightCount: number;
   satCount: number;
-  sunCount: number;
+  /** Giorni distinti lavorati che sono domenica o data festivo nel periodo. */
+  festiveCount: number;
   hoursTotal: number;
   contractMode: "SHIFTS" | "HOURS";
 };
@@ -87,19 +88,20 @@ export function buildScheduleReport(input: {
 } {
   const { year, month, shiftTypes, assignments, members } = input;
   const hol = input.holidayOverrides ?? [];
+  const festivoDateSet = new Set(hol.filter((h) => isFestivoOverride(h)).map((h) => h.date));
   const stById = new Map(shiftTypes.map((s) => [s.id, s]));
 
   const hoursByMember = new Map<string, number>();
   const countByMember = new Map<string, number>();
   const nightsByMember = new Map<string, number>();
   const satsByMember = new Map<string, number>();
-  const sunsByMember = new Map<string, number>();
+  const festiveDaysByMember = new Map<string, Set<string>>();
   for (const m of members) {
     hoursByMember.set(m.id, 0);
     countByMember.set(m.id, 0);
     nightsByMember.set(m.id, 0);
     satsByMember.set(m.id, 0);
-    sunsByMember.set(m.id, 0);
+    festiveDaysByMember.set(m.id, new Set());
   }
 
   const extraCount = new Map<string, number>();
@@ -122,7 +124,9 @@ export function buildScheduleReport(input: {
       }
       const dow = utcDow(a.date);
       if (dow === 6) satsByMember.set(mid, (satsByMember.get(mid) ?? 0) + 1);
-      if (dow === 0) sunsByMember.set(mid, (sunsByMember.get(mid) ?? 0) + 1);
+      if (dow === 0 || festivoDateSet.has(a.date)) {
+        festiveDaysByMember.get(mid)!.add(a.date);
+      }
     } else if (gl) {
       const ck = `g:${gl}|${a.guestColor ?? ""}`;
       extraCount.set(ck, (extraCount.get(ck) ?? 0) + 1);
@@ -139,7 +143,7 @@ export function buildScheduleReport(input: {
     shiftCount: countByMember.get(m.id) ?? 0,
     nightCount: nightsByMember.get(m.id) ?? 0,
     satCount: satsByMember.get(m.id) ?? 0,
-    sunCount: sunsByMember.get(m.id) ?? 0,
+    festiveCount: festiveDaysByMember.get(m.id)?.size ?? 0,
     hoursTotal: Math.round((hoursByMember.get(m.id) ?? 0) * 100) / 100,
     contractMode: m.contractMode,
   }));

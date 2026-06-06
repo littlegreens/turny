@@ -6,8 +6,9 @@ import { OrgMemberItem } from "@/components/org-member-item";
 import { authOptions } from "@/lib/auth";
 import { FALLBACK_ORG_ADMIN_ROLES, hasAnyRole, normalizeRoles } from "@/lib/org-roles";
 import { fetchOrgMemberDisplayColors } from "@/lib/org-member-display-colors";
-import { distinctProfessionalRolesFromMembers } from "@/lib/org-professional-roles";
+import { distinctProfessionalRoles } from "@/lib/org-professional-roles";
 import { prisma } from "@/lib/prisma";
+import { parseWeeklyCellsFromConstraints } from "@/lib/weekly-unavailability";
 import { isSuperAdminEmail } from "@/lib/super-admin";
 
 type Props = {
@@ -69,13 +70,15 @@ export default async function MemberDetailPage({ params }: Props) {
       constraints: {
         where: {
           OR: [
-            { type: "UNAVAILABLE_SHIFT", weight: "SOFT" },
-            { type: "UNAVAILABLE_WEEKDAY", weight: "SOFT" },
+            { type: "UNAVAILABLE_SHIFT" },
+            { type: "UNAVAILABLE_WEEKDAY" },
+            { type: "UNAVAILABLE_WEEKDAY_SHIFT" },
             { type: "CUSTOM", note: "TARGET_SHIFTS_MONTH" },
             { type: "CUSTOM", note: "TARGET_HOURS_MONTH" },
             { type: "CUSTOM", note: "TARGET_NIGHTS_MONTH" },
             { type: "CUSTOM", note: "TARGET_SATURDAYS_MONTH" },
             { type: "CUSTOM", note: "TARGET_SUNDAYS_MONTH" },
+            { type: "CUSTOM", note: "NO_HOLIDAY_WORK" },
           ],
         },
         select: { type: true, value: true, note: true },
@@ -84,26 +87,25 @@ export default async function MemberDetailPage({ params }: Props) {
         select: {
           name: true,
           color: true,
-          shiftTypes: { where: { isActive: true }, orderBy: [{ order: "asc" }, { createdAt: "asc" }], select: { id: true, name: true } },
+          shiftTypes: {
+            where: { isActive: true },
+            orderBy: [{ order: "asc" }, { createdAt: "asc" }],
+            select: { id: true, name: true, startTime: true, activeWeekdays: true },
+          },
         },
       },
     },
   });
 
   const assignedCalendars = calendarMemberships.map((item) => {
-    const avoidShiftTypeIds = item.constraints
-      .filter((c) => c.type === "UNAVAILABLE_SHIFT")
-      .map((c) => String((c.value as { shiftTypeId?: string } | undefined)?.shiftTypeId ?? ""))
-      .filter(Boolean);
+    const shiftTypes = item.calendar.shiftTypes;
+    const weeklyCellKeys = [...parseWeeklyCellsFromConstraints(item.constraints, shiftTypes)];
     const targetShifts = item.constraints.find((c) => c.type === "CUSTOM" && c.note === "TARGET_SHIFTS_MONTH");
     const targetHours = item.constraints.find((c) => c.type === "CUSTOM" && c.note === "TARGET_HOURS_MONTH");
     const targetNights = item.constraints.find((c) => c.type === "CUSTOM" && c.note === "TARGET_NIGHTS_MONTH");
     const targetSaturdays = item.constraints.find((c) => c.type === "CUSTOM" && c.note === "TARGET_SATURDAYS_MONTH");
     const targetSundays = item.constraints.find((c) => c.type === "CUSTOM" && c.note === "TARGET_SUNDAYS_MONTH");
-    const avoidWeekdays = item.constraints
-      .filter((c) => c.type === "UNAVAILABLE_WEEKDAY")
-      .map((c) => Number((c.value as { weekday?: number }).weekday))
-      .filter((n) => !Number.isNaN(n));
+    const noHolidayWork = item.constraints.some((c) => c.type === "CUSTOM" && c.note === "NO_HOLIDAY_WORK");
     const targetShiftsFromConstraint =
       typeof (targetShifts?.value as { shifts?: unknown } | undefined)?.shifts === "number"
         ? Number((targetShifts?.value as { shifts?: number }).shifts)
@@ -121,8 +123,8 @@ export default async function MemberDetailPage({ params }: Props) {
       name: item.calendar.name,
       color: item.calendar.color,
       calendarMemberId: item.id,
-      shiftTypes: item.calendar.shiftTypes,
-      initialAvoidShiftTypeIds: [...new Set(avoidShiftTypeIds)],
+      shiftTypes,
+      initialWeeklyCellKeys: weeklyCellKeys,
       initialTargetShiftsMonth: targetShiftsFromConstraint ?? item.contractShiftsMonth ?? null,
       initialTargetHoursMonth: targetHoursFromConstraint ?? hoursFromColumn ?? null,
       initialTargetNightsMonth:
@@ -137,14 +139,19 @@ export default async function MemberDetailPage({ params }: Props) {
         typeof (targetSundays?.value as { sundays?: unknown } | undefined)?.sundays === "number"
           ? Number((targetSundays?.value as { sundays?: number }).sundays)
           : null,
-      initialAvoidWeekdays: [...new Set(avoidWeekdays)],
+      initialNoHolidayWork: noHolidayWork,
     };
   });
 
   const canManage = effectiveRoles.some((r) => ["OWNER", "ADMIN", "MANAGER"].includes(r));
   const canEditRole = canManage;
   const canAssignAdmin = effectiveRoles.some((r) => ["OWNER", "ADMIN"].includes(r));
-  const professionalRoleSuggestions = distinctProfessionalRolesFromMembers(allMembers);
+  const orgCatalog =
+    membership?.org.professionalRoleCatalog ??
+    (await prisma.organization.findUnique({ where: { id: orgId }, select: { professionalRoleCatalog: true } }))
+      ?.professionalRoleCatalog ??
+    "";
+  const professionalRoleSuggestions = distinctProfessionalRoles(allMembers, orgCatalog);
   const displayName = `${member.user.firstName} ${member.user.lastName}`.trim() || member.user.email;
 
   return (

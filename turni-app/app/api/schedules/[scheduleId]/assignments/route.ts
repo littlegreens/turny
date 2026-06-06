@@ -4,20 +4,25 @@ import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { authorizeScheduleAccess, canEditScheduleAssignments } from "@/lib/schedule-access";
 import { prisma } from "@/lib/prisma";
+import { extraPersonAssignmentNote, extraPersonById, parseScheduleExtraPeople } from "@/lib/schedule-extra-people";
 
 const createAssignmentSchema = z
   .object({
     memberId: z.string().min(1).optional(),
+    extraPersonId: z.string().min(1).optional(),
     guestLabel: z.string().min(1).max(120).optional(),
     guestColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
     shiftTypeId: z.string().min(1),
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data non valida"),
   })
   .refine(
-    (d) =>
-      Boolean(d.memberId && d.memberId.length > 0) !==
-      Boolean(d.guestLabel && d.guestLabel.trim().length > 0),
-    { message: "Indica un membro oppure nome e colore per persona extra." },
+    (d) => {
+      const hasMember = Boolean(d.memberId && d.memberId.length > 0);
+      const hasExtraId = Boolean(d.extraPersonId && d.extraPersonId.trim().length > 0);
+      const hasGuestLabel = Boolean(d.guestLabel && d.guestLabel.trim().length > 0);
+      return [hasMember, hasExtraId, hasGuestLabel].filter(Boolean).length === 1;
+    },
+    { message: "Indica un membro, un extra dalla lista, oppure nome e colore per extra libero." },
   );
 
 type Params = {
@@ -41,7 +46,7 @@ export async function POST(request: Request, { params }: Params) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Input non valido" }, { status: 400 });
   }
 
-  const { memberId, guestLabel, guestColor, shiftTypeId, date } = parsed.data;
+  const { memberId, extraPersonId, guestLabel, guestColor, shiftTypeId, date } = parsed.data;
   const d = new Date(`${date}T00:00:00.000Z`);
   const meta = (access.schedule.generationLog ?? {}) as { startDate?: string; endDate?: string };
   if (meta.startDate && meta.endDate) {
@@ -70,7 +75,21 @@ export async function POST(request: Request, { params }: Params) {
     }
   }
 
-  const guestColorNorm = guestColor?.trim() || "#6b7280";
+  let resolvedGuestLabel = guestLabel?.trim() ?? "";
+  let resolvedGuestColor = guestColor?.trim() || "#6b7280";
+  let assignmentNote: string | null = null;
+
+  if (isGuest && extraPersonId?.trim()) {
+    const extra = extraPersonById(parseScheduleExtraPeople(access.schedule.rules), extraPersonId.trim());
+    if (!extra) {
+      return NextResponse.json({ error: "Persona extra non trovata nel turno" }, { status: 400 });
+    }
+    resolvedGuestLabel = extra.label;
+    resolvedGuestColor = extra.color;
+    assignmentNote = extraPersonAssignmentNote(extra.id);
+  } else if (isGuest && !resolvedGuestLabel) {
+    return NextResponse.json({ error: "Nome extra mancante" }, { status: 400 });
+  }
 
   try {
     const created = await prisma.shiftAssignment.create({
@@ -79,8 +98,13 @@ export async function POST(request: Request, { params }: Params) {
         shiftTypeId,
         date: d,
         ...(isGuest
-          ? { memberId: null, guestLabel: guestLabel!.trim(), guestColor: guestColorNorm }
-          : { memberId, guestLabel: null, guestColor: null }),
+          ? {
+              memberId: null,
+              guestLabel: resolvedGuestLabel,
+              guestColor: resolvedGuestColor,
+              note: assignmentNote,
+            }
+          : { memberId, guestLabel: null, guestColor: null, note: null }),
       },
       include: {
         member: { include: { user: { select: { firstName: true, lastName: true, email: true } } } },

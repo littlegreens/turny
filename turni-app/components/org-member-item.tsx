@@ -8,7 +8,8 @@ import { ColorPalettePicker } from "@/components/color-palette-picker";
 import { ConfirmModal } from "@/components/confirm-modal";
 import { ProfessionalRoleInput } from "@/components/professional-role-input";
 import { useAppToast } from "@/components/app-toast-provider";
-import { formatWeekdays, WEEKDAY_OPTIONS } from "@/lib/weekdays";
+import { WeeklyUnavailabilityModal } from "@/components/weekly-unavailability-modal";
+import { formatWeeklyUnavailabilitySummary, weeklyCellsFromKeys } from "@/lib/weekly-unavailability";
 
 type Props = {
   member: {
@@ -31,14 +32,14 @@ type Props = {
     name: string;
     color: string | null;
     calendarMemberId: string;
-    shiftTypes: { id: string; name: string }[];
-    initialAvoidShiftTypeIds: string[];
+    shiftTypes: { id: string; name: string; startTime: string; activeWeekdays: number[] }[];
+    initialWeeklyCellKeys: string[];
     initialTargetShiftsMonth: number | null;
     initialTargetHoursMonth: number | null;
     initialTargetNightsMonth: number | null;
     initialTargetSaturdaysMonth: number | null;
     initialTargetSundaysMonth: number | null;
-    initialAvoidWeekdays: number[];
+    initialNoHolidayWork: boolean;
   }[];
   pageMode?: boolean;
 };
@@ -66,33 +67,31 @@ export function OrgMemberItem({
   const [roles, setRoles] = useState<string[]>(member.roles.length ? member.roles : [member.role]);
   const [managedCalendarIds, setManagedCalendarIds] = useState<string[]>(assignedCalendars.map((c) => c.id));
   const [rowColor, setRowColor] = useState(member.defaultDisplayColor ?? "");
-  const [openWeekdayPickerFor, setOpenWeekdayPickerFor] = useState<string | null>(null);
+  const [weeklyModalFor, setWeeklyModalFor] = useState<string | null>(null);
   const [calendarPrefs, setCalendarPrefs] = useState<Record<string, {
-    avoidShiftTypeIds: string[];
+    weeklyCellKeys: string[];
     targetShiftsMonth: string;
     targetHoursMonth: string;
     targetNightsMonth: string;
     targetSaturdaysMonth: string;
     targetSundaysMonth: string;
-    avoidWeekdays: number[];
+    noHolidayWork: boolean;
   }>>(
     Object.fromEntries(
       assignedCalendars.map((cal) => [
         cal.calendarMemberId,
         {
-          avoidShiftTypeIds: cal.initialAvoidShiftTypeIds || [],
+          weeklyCellKeys: cal.initialWeeklyCellKeys ?? [],
           targetShiftsMonth: cal.initialTargetShiftsMonth === null ? "" : String(cal.initialTargetShiftsMonth),
           targetHoursMonth: cal.initialTargetHoursMonth === null ? "" : String(cal.initialTargetHoursMonth),
           targetNightsMonth: cal.initialTargetNightsMonth === null ? "" : String(cal.initialTargetNightsMonth),
           targetSaturdaysMonth: cal.initialTargetSaturdaysMonth === null ? "" : String(cal.initialTargetSaturdaysMonth),
           targetSundaysMonth: cal.initialTargetSundaysMonth === null ? "" : String(cal.initialTargetSundaysMonth),
-          avoidWeekdays: cal.initialAvoidWeekdays ?? [],
+          noHolidayWork: cal.initialNoHolidayWork ?? false,
         },
       ]),
     ),
   );
-  const [avoidShiftQuery, setAvoidShiftQuery] = useState<Record<string, string>>({});
-  const [openAvoidShiftFor, setOpenAvoidShiftFor] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -144,7 +143,7 @@ export function OrgMemberItem({
       return;
     }
     setDiscardEditOpen(false);
-    setOpenWeekdayPickerFor(null);
+    setWeeklyModalFor(null);
     if (pageMode) {
       const orgSlug = pathname.split("/")[1] ?? "";
       router.push(`/${orgSlug}/members`);
@@ -166,13 +165,13 @@ export function OrgMemberItem({
       assignedCalendars.map((cal) => [
         cal.calendarMemberId,
         {
-          avoidShiftTypeIds: cal.initialAvoidShiftTypeIds || [],
+          weeklyCellKeys: cal.initialWeeklyCellKeys ?? [],
           targetShiftsMonth: cal.initialTargetShiftsMonth === null ? "" : String(cal.initialTargetShiftsMonth),
           targetHoursMonth: cal.initialTargetHoursMonth === null ? "" : String(cal.initialTargetHoursMonth),
           targetNightsMonth: cal.initialTargetNightsMonth === null ? "" : String(cal.initialTargetNightsMonth),
           targetSaturdaysMonth: cal.initialTargetSaturdaysMonth === null ? "" : String(cal.initialTargetSaturdaysMonth),
           targetSundaysMonth: cal.initialTargetSundaysMonth === null ? "" : String(cal.initialTargetSundaysMonth),
-          avoidWeekdays: cal.initialAvoidWeekdays ?? [],
+          noHolidayWork: cal.initialNoHolidayWork ?? false,
         },
       ]),
     );
@@ -233,7 +232,7 @@ export function OrgMemberItem({
         useDisplayColorInCalendars: true,
         calendarPreferences: assignedCalendars.map((cal) => ({
           calendarMemberId: cal.calendarMemberId,
-          avoidShiftTypeIds: calendarPrefs[cal.calendarMemberId]?.avoidShiftTypeIds || [],
+          weeklyUnavailability: weeklyCellsFromKeys(calendarPrefs[cal.calendarMemberId]?.weeklyCellKeys ?? []),
           targetShiftsMonth:
             calendarPrefs[cal.calendarMemberId]?.targetShiftsMonth === ""
               ? null
@@ -254,7 +253,7 @@ export function OrgMemberItem({
             calendarPrefs[cal.calendarMemberId]?.targetSundaysMonth === ""
               ? null
               : Number(calendarPrefs[cal.calendarMemberId]?.targetSundaysMonth),
-          avoidWeekdays: calendarPrefs[cal.calendarMemberId]?.avoidWeekdays || [],
+          noHolidayWork: Boolean(calendarPrefs[cal.calendarMemberId]?.noHolidayWork),
         })),
       }),
     });
@@ -291,51 +290,35 @@ export function OrgMemberItem({
   }
 
   function updateCalendarPref(calendarMemberId: string, patch: Partial<{
-    avoidShiftTypeIds: string[];
+    weeklyCellKeys: string[];
     targetShiftsMonth: string;
     targetHoursMonth: string;
     targetNightsMonth: string;
     targetSaturdaysMonth: string;
     targetSundaysMonth: string;
-    avoidWeekdays: number[];
+    noHolidayWork: boolean;
   }>) {
     setCalendarPrefs((prev) => ({
       ...prev,
       [calendarMemberId]: {
-        avoidShiftTypeIds: prev[calendarMemberId]?.avoidShiftTypeIds ?? [],
+        weeklyCellKeys: prev[calendarMemberId]?.weeklyCellKeys ?? [],
         targetShiftsMonth: prev[calendarMemberId]?.targetShiftsMonth ?? "",
         targetHoursMonth: prev[calendarMemberId]?.targetHoursMonth ?? "",
         targetNightsMonth: prev[calendarMemberId]?.targetNightsMonth ?? "",
         targetSaturdaysMonth: prev[calendarMemberId]?.targetSaturdaysMonth ?? "",
         targetSundaysMonth: prev[calendarMemberId]?.targetSundaysMonth ?? "",
-        avoidWeekdays: prev[calendarMemberId]?.avoidWeekdays ?? [],
+        noHolidayWork: prev[calendarMemberId]?.noHolidayWork ?? false,
         ...patch,
       },
     }));
   }
 
-  function addAvoidShift(calendarMemberId: string, shiftTypeId: string) {
-    const current = calendarPrefs[calendarMemberId]?.avoidShiftTypeIds ?? [];
-    if (current.includes(shiftTypeId)) return;
-    updateCalendarPref(calendarMemberId, { avoidShiftTypeIds: [...current, shiftTypeId] });
-    setAvoidShiftQuery((prev) => ({ ...prev, [calendarMemberId]: "" }));
-  }
-
-  function removeAvoidShift(calendarMemberId: string, shiftTypeId: string) {
-    const current = calendarPrefs[calendarMemberId]?.avoidShiftTypeIds ?? [];
-    updateCalendarPref(calendarMemberId, { avoidShiftTypeIds: current.filter((id) => id !== shiftTypeId) });
-  }
-
-  function toggleWeekday(calendarMemberId: string, weekday: number) {
-    const current = calendarPrefs[calendarMemberId]?.avoidWeekdays ?? [];
-    const next = current.includes(weekday) ? current.filter((d) => d !== weekday) : [...current, weekday];
-    updateCalendarPref(calendarMemberId, { avoidWeekdays: next });
-  }
-
   const orgSlugFromPath = pathname.split("/")[1] ?? "";
 
   function renderEditForm() {
+    const weeklyModalCal = assignedCalendars.find((c) => c.calendarMemberId === weeklyModalFor);
     return (
+      <>
         <div className="row g-3">
           <div className="col-md-4">
             <label className="form-label small mb-1">Nome</label>
@@ -363,14 +346,6 @@ export function OrgMemberItem({
               disabled={!canEditRole || loading}
               orgSlug={orgSlugFromPath}
               canManageGlobalRoles={canEditRole}
-            />
-          </div>
-          <div className="col-12 border-top pt-3 mt-1">
-            <ColorPalettePicker
-              value={rowColor && /^#[0-9A-Fa-f]{6}$/.test(rowColor) ? rowColor : "#3B8BD4"}
-              onChange={setRowColor}
-              disabled={!canEditRole || loading}
-              label="Colore"
             />
           </div>
           <div className="col-md-12">
@@ -427,25 +402,29 @@ export function OrgMemberItem({
               <p className="small text-secondary mb-2">
                 Qui imposti solo le preferenze base della persona per questo calendario.
               </p>
+              <div className="mb-3">
+                <ColorPalettePicker
+                  value={rowColor && /^#[0-9A-Fa-f]{6}$/.test(rowColor) ? rowColor : "#3B8BD4"}
+                  onChange={setRowColor}
+                  disabled={!canEditRole || loading}
+                  label="Colore in griglia turni"
+                />
+              </div>
               {assignedCalendars.length === 0 ? (
                 <p className="small text-secondary mb-0">Nessun calendario associato.</p>
               ) : (
                 <div className="d-grid gap-2">
                   {assignedCalendars.map((cal) => {
                     const pref = calendarPrefs[cal.calendarMemberId] ?? {
-                      avoidShiftTypeIds: [],
+                      weeklyCellKeys: [],
                       targetShiftsMonth: "",
                       targetHoursMonth: "",
                       targetNightsMonth: "",
                       targetSaturdaysMonth: "",
                       targetSundaysMonth: "",
-                      avoidWeekdays: [],
+                      noHolidayWork: false,
                     };
-                    const rawQuery = avoidShiftQuery[cal.calendarMemberId] ?? "";
-                    const query = rawQuery.trim().toLowerCase();
-                    const filteredShiftTypes = cal.shiftTypes.filter(
-                      (st) => !pref.avoidShiftTypeIds.includes(st.id) && (query.length === 0 || st.name.toLowerCase().includes(query)),
-                    );
+                    const weeklySummary = formatWeeklyUnavailabilitySummary(pref.weeklyCellKeys);
                     return (
                       <div
                         key={cal.calendarMemberId}
@@ -456,75 +435,42 @@ export function OrgMemberItem({
                           {cal.name}
                         </p>
                         <div className="row g-3">
-                          <div className="col-md-6">
-                            <label className="form-label small mb-1">Evita turno</label>
-                            <div className="d-flex flex-wrap align-items-center gap-2 p-2">
-                              {pref.avoidShiftTypeIds.map((shiftId) => {
-                                const st = cal.shiftTypes.find((x) => x.id === shiftId);
-                                if (!st) return null;
-                                return (
-                                  <span key={shiftId} className="d-inline-flex align-items-center gap-1 px-2 py-1 rounded-2" style={{ border: "1px solid #1f7a3f", background: "#edf7f0", color: "#1f7a3f", fontWeight: 600, fontSize: 12 }}>
-                                    {st.name}
-                                    <button
-                                      type="button"
-                                      className="border-0 bg-transparent d-inline-flex align-items-center justify-content-center"
-                                      aria-label="Rimuovi turno"
-                                      onClick={() => removeAvoidShift(cal.calendarMemberId, shiftId)}
-                                      disabled={!canEditRole || loading}
-                                      style={{ width: 18, height: 18, color: "#1f7a3f", borderRadius: "50%" }}
-                                    >
-                                      <span style={{ fontSize: 12, lineHeight: 1 }}>✕</span>
-                                    </button>
-                                  </span>
-                                );
-                              })}
-                              <div className="position-relative flex-grow-1" style={{ minWidth: 170 }}>
-                                <input
-                                  className="form-control form-control-sm input-underlined"
-                                  placeholder="Scrivi per cercare..."
-                                  value={rawQuery}
-                                  onFocus={() => setOpenAvoidShiftFor(cal.calendarMemberId)}
-                                  onBlur={() => {
-                                    window.setTimeout(() => {
-                                      setOpenAvoidShiftFor((prev) => (prev === cal.calendarMemberId ? null : prev));
-                                    }, 120);
-                                  }}
-                                  onChange={(e) => {
-                                    setAvoidShiftQuery((prev) => ({ ...prev, [cal.calendarMemberId]: e.target.value }));
-                                    setOpenAvoidShiftFor(cal.calendarMemberId);
-                                  }}
-                                  disabled={!canEditRole || loading}
-                                />
-                                {canEditRole && !loading && openAvoidShiftFor === cal.calendarMemberId && query.length > 0 ? (
-                                  <div className="border rounded-2 bg-white shadow-sm p-1 mt-1" style={{ position: "absolute", zIndex: 30, left: 0, right: 0 }}>
-                                    {filteredShiftTypes.slice(0, 6).map((st) => (
-                                      <div
-                                        key={st.id}
-                                        className="small px-2 py-1 rounded-2 mb-1"
-                                        style={{ color: "#1f7a3f", cursor: "pointer" }}
-                                        onMouseDown={(e) => e.preventDefault()}
-                                        onClick={() => {
-                                          addAvoidShift(cal.calendarMemberId, st.id);
-                                          setOpenAvoidShiftFor(cal.calendarMemberId);
-                                        }}
-                                      >
-                                        {st.name}
-                                      </div>
-                                    ))}
-                                    {filteredShiftTypes.length === 0 ? (
-                                      <div className="small text-secondary px-2 py-1">Nessun risultato</div>
-                                    ) : null}
-                                  </div>
-                                ) : null}
-                              </div>
+                          <div className="col-12">
+                            <label className="form-label small mb-1">Indisponibilità settimanali</label>
+                            <p className="small text-secondary mb-2">{weeklySummary}</p>
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-outline-success"
+                              onClick={() => setWeeklyModalFor(cal.calendarMemberId)}
+                              disabled={!canEditRole || loading}
+                            >
+                              Configura griglia settimanale
+                            </button>
+                            <div className="member-popup-field-row mt-3">
+                              <span className="member-popup-field-label">Evita festivi</span>
+                              <button
+                                type="button"
+                                role="switch"
+                                aria-checked={pref.noHolidayWork}
+                                aria-label="Evita festivi"
+                                className={`turny-toggle-switch member-popup-field-control ${pref.noHolidayWork ? "is-on" : ""}`}
+                                onClick={() =>
+                                  updateCalendarPref(cal.calendarMemberId, { noHolidayWork: !pref.noHolidayWork })
+                                }
+                                disabled={!canEditRole || loading}
+                              >
+                                <span className="turny-toggle-switch-track" aria-hidden="true">
+                                  <span className="turny-toggle-switch-knob" />
+                                </span>
+                              </button>
                             </div>
                           </div>
                           <div className="col-md-3">
-                            <label className="form-label small mb-1">Max turni (nel periodo)</label>
+                            <label className="form-label small mb-1">Max turni</label>
                             <input type="number" min={0} max={200} className="form-control form-control-sm input-underlined" style={{ maxWidth: 110 }} value={pref.targetShiftsMonth} onChange={(e) => updateCalendarPref(cal.calendarMemberId, { targetShiftsMonth: e.target.value })} disabled={!canEditRole || loading} />
                           </div>
                           <div className="col-md-3">
-                            <label className="form-label small mb-1">Obiettivo ore (nel mese)</label>
+                            <label className="form-label small mb-1">Obiettivo ore</label>
                             <input type="number" min={0} className="form-control form-control-sm input-underlined" style={{ maxWidth: 110 }} value={pref.targetHoursMonth} onChange={(e) => updateCalendarPref(cal.calendarMemberId, { targetHoursMonth: e.target.value })} disabled={!canEditRole || loading} />
                           </div>
                           <div className="col-md-2">
@@ -536,26 +482,8 @@ export function OrgMemberItem({
                             <input type="number" min={0} className="form-control form-control-sm input-underlined" style={{ maxWidth: 110 }} value={pref.targetSaturdaysMonth} onChange={(e) => updateCalendarPref(cal.calendarMemberId, { targetSaturdaysMonth: e.target.value })} disabled={!canEditRole || loading} />
                           </div>
                           <div className="col-md-2">
-                            <label className="form-label small mb-1">Numero domeniche</label>
+                            <label className="form-label small mb-1">Numero festivi</label>
                             <input type="number" min={0} className="form-control form-control-sm input-underlined" style={{ maxWidth: 110 }} value={pref.targetSundaysMonth} onChange={(e) => updateCalendarPref(cal.calendarMemberId, { targetSundaysMonth: e.target.value })} disabled={!canEditRole || loading} />
-                          </div>
-                          <div className="col-12 position-relative">
-                            <label className="form-label small mb-1 d-block">Evita giorni (lun–dom)</label>
-                            <button type="button" className="btn btn-sm btn-outline-success" onClick={() => setOpenWeekdayPickerFor((v) => (v === cal.calendarMemberId ? null : cal.calendarMemberId))} disabled={!canEditRole || loading}>
-                              {pref.avoidWeekdays.length ? formatWeekdays(pref.avoidWeekdays) : "Seleziona giorni"}
-                            </button>
-                            {openWeekdayPickerFor === cal.calendarMemberId ? (
-                              <div className="weekdays-popover-dark" style={{ position: "absolute", zIndex: 30, minWidth: 260 }}>
-                                <div className="d-flex flex-wrap gap-1 mb-2">
-                                  {WEEKDAY_OPTIONS.map((day) => (
-                                    <button key={day.value} type="button" className={`btn btn-sm ${pref.avoidWeekdays.includes(day.value) ? "btn-success" : "btn-outline-success"}`} onClick={() => toggleWeekday(cal.calendarMemberId, day.value)} disabled={!canEditRole || loading}>
-                                      {day.label}
-                                    </button>
-                                  ))}
-                                </div>
-                                <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setOpenWeekdayPickerFor(null)}>Chiudi</button>
-                              </div>
-                            ) : null}
                           </div>
                         </div>
                       </div>
@@ -570,13 +498,28 @@ export function OrgMemberItem({
               <button className="btn btn-sm btn-outline-secondary" onClick={() => tryCloseEdit(false)} disabled={loading}>Annulla</button>
             ) : null}
             {canRemove && pageMode ? (
-              <button className="btn btn-sm btn-outline-danger" onClick={() => setDeleteOpen(true)} disabled={isSelf || loading}>Rimuovi persona</button>
+              <button className="btn btn-sm btn-danger turny-btn-action" onClick={() => setDeleteOpen(true)} disabled={isSelf || loading}>Rimuovi persona</button>
             ) : null}
             <button className="btn btn-sm btn-success" onClick={save} disabled={!canEditRole || loading}>
               {loading ? "Salvataggio..." : "Salva modifiche"}
             </button>
           </div>
         </div>
+        {weeklyModalCal ? (
+          <WeeklyUnavailabilityModal
+            open
+            calendarName={weeklyModalCal.name}
+            shiftTypes={weeklyModalCal.shiftTypes}
+            initialCellKeys={new Set(calendarPrefs[weeklyModalCal.calendarMemberId]?.weeklyCellKeys ?? [])}
+            disabled={!canEditRole || loading}
+            onClose={() => setWeeklyModalFor(null)}
+            onSave={(keys) => {
+              updateCalendarPref(weeklyModalCal.calendarMemberId, { weeklyCellKeys: [...keys] });
+              setWeeklyModalFor(null);
+            }}
+          />
+        ) : null}
+      </>
     );
   }
 
@@ -635,7 +578,7 @@ export function OrgMemberItem({
             Dettaglio
           </Link>
           {canRemove ? (
-            <button className="btn btn-sm btn-outline-danger" onClick={() => setDeleteOpen(true)} disabled={isSelf || loading}>
+            <button className="btn btn-sm btn-danger turny-btn-action" onClick={() => setDeleteOpen(true)} disabled={isSelf || loading}>
               Rimuovi
             </button>
           ) : null}

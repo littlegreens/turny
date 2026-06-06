@@ -8,7 +8,7 @@ import { prisma } from "@/lib/prisma";
 
 type Params = { params: Promise<{ scheduleId: string }> };
 
-const holidayModeSchema = z.enum(["CLOSED", "SUNDAY_LIKE", "CUSTOM"]);
+const holidayModeSchema = z.enum(["CLOSED", "FESTIVO", "SUNDAY_LIKE", "CUSTOM"]);
 
 const holidayOverrideSchema = z.object({
   id: z.string().min(1),
@@ -57,14 +57,9 @@ export async function PATCH(req: Request, { params }: Params) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Input non valido" }, { status: 400 });
   }
 
-  // Validazione minima: date dentro al periodo e shiftTypeIds (se presenti) sono strings valide.
   for (const h of parsed.data.holidayOverrides) {
     if (!isDateInSchedule(h.date, access.schedule)) {
       return NextResponse.json({ error: `Data fuori periodo: ${h.date}` }, { status: 400 });
-    }
-    // se mode=CLOSED non serve shiftTypeIds; se CUSTOM serve.
-    if (h.mode === "CUSTOM" && (!h.shiftTypeIds || h.shiftTypeIds.length === 0)) {
-      return NextResponse.json({ error: `Per CUSTOM serve almeno un tipo turno (${h.date})` }, { status: 400 });
     }
   }
 
@@ -73,7 +68,7 @@ export async function PATCH(req: Request, { params }: Params) {
     id: r.id,
     date: r.date,
     mode: r.mode,
-    ...(r.mode === "CUSTOM" && r.shiftTypeIds?.length ? { shiftTypeIds: r.shiftTypeIds } : {}),
+    ...(r.shiftTypeIds?.length ? { shiftTypeIds: r.shiftTypeIds } : {}),
   }));
 
   await prisma.schedule.update({

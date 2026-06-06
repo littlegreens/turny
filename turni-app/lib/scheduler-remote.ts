@@ -17,11 +17,19 @@ export type SchedulerCalendarOutput = {
   solverStatus: string;
 };
 
+export type SchedulerSolveMeta = {
+  wallTimeSec?: number;
+  cpStatus?: string;
+  timeLimitSec?: number;
+  passLabel?: string;
+};
+
 export type RemoteSolveOk = {
   kind: "ok";
   assignments: RemoteAssignmentInput[];
   alerts?: { type: string; message: string; date?: string; shiftTypeId?: string; memberId?: string }[];
   calendar?: SchedulerCalendarOutput;
+  solveMeta?: SchedulerSolveMeta;
 };
 
 export type RemoteSolveError = {
@@ -52,7 +60,7 @@ export async function callSchedulerSolve(scheduleId: string, problem: SchedulerP
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ scheduleId, problem }),
       // Timeout rete verso uvicorn: evita che la route Next resti appesa per minuti se il servizio non risponde.
-      signal: AbortSignal.timeout(88_000),
+      signal: AbortSignal.timeout(100_000),
     });
 
     const raw = (await res.json()) as {
@@ -61,6 +69,7 @@ export async function callSchedulerSolve(scheduleId: string, problem: SchedulerP
       calendar?: SchedulerCalendarOutput;
       assignments?: RemoteAssignmentInput[];
       alerts?: RemoteSolveOk["alerts"];
+      solveMeta?: SchedulerSolveMeta;
       error?: string;
     };
 
@@ -99,6 +108,7 @@ export async function callSchedulerSolve(scheduleId: string, problem: SchedulerP
       assignments,
       alerts: raw.alerts,
       calendar: raw.calendar,
+      solveMeta: raw.solveMeta,
     };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
